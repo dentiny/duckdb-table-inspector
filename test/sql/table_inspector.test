@@ -1,0 +1,5 @@
+# name: test/sql/table_inspector.test
+# description: test table_inspector extension
+# group: [table_inspector]
+
+require table_inspector
