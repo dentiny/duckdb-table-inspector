@@ -1,0 +1,37 @@
+#define DUCKDB_EXTENSION_MAIN
+
+#include "table_inspector_extension.hpp"
+#include "duckdb.hpp"
+#include "duckdb/common/exception.hpp"
+#include "duckdb/function/scalar_function.hpp"
+
+namespace duckdb {
+
+static void LoadInternal(ExtensionLoader &loader) {
+	// Extension loaded successfully
+}
+
+void TableInspectorExtension::Load(ExtensionLoader &loader) {
+	LoadInternal(loader);
+}
+
+std::string TableInspectorExtension::Name() {
+	return "table_inspector";
+}
+
+std::string TableInspectorExtension::Version() const {
+#ifdef EXT_VERSION_TABLE_INSPECTOR
+	return EXT_VERSION_TABLE_INSPECTOR;
+#else
+	return "";
+#endif
+}
+
+} // namespace duckdb
+
+extern "C" {
+
+DUCKDB_CPP_EXTENSION_ENTRY(table_inspector, loader) {
+	duckdb::LoadInternal(loader);
+}
+}
