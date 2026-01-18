@@ -10,10 +10,11 @@
 
 namespace duckdb {
 
-//--------------------------------------------------------------------------------------------------//
+namespace {
+
+//===--------------------------------------------------------------------===//
 // inspect_database() - List all tables
-//--------------------------------------------------------------------------------------------------//
-//
+//===--------------------------------------------------------------------===//
 
 struct InspectDatabaseData : public GlobalTableFunctionState {
 	InspectDatabaseData() : offset(0) {
@@ -29,8 +30,8 @@ struct InspectDatabaseData : public GlobalTableFunctionState {
 	idx_t offset;
 };
 
-static unique_ptr<FunctionData> InspectDatabaseBind(ClientContext &context, TableFunctionBindInput &input,
-                                                    vector<LogicalType> &return_types, vector<string> &names) {
+unique_ptr<FunctionData> InspectDatabaseBind(ClientContext &context, TableFunctionBindInput &input,
+                                             vector<LogicalType> &return_types, vector<string> &names) {
 	// Define output columns
 	names.emplace_back("database_name");
 	return_types.emplace_back(LogicalType::VARCHAR);
@@ -56,7 +57,7 @@ static unique_ptr<FunctionData> InspectDatabaseBind(ClientContext &context, Tabl
 	return nullptr;
 }
 
-static unique_ptr<GlobalTableFunctionState> InspectDatabaseInit(ClientContext &context, TableFunctionInitInput &input) {
+unique_ptr<GlobalTableFunctionState> InspectDatabaseInit(ClientContext &context, TableFunctionInitInput &input) {
 	auto result = make_uniq<InspectDatabaseData>();
 
 	// Get all schemas from all databases
@@ -88,7 +89,7 @@ static unique_ptr<GlobalTableFunctionState> InspectDatabaseInit(ClientContext &c
 	return std::move(result);
 }
 
-static void InspectDatabaseExecute(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
+void InspectDatabaseExecute(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
 	auto &state = data.global_state->Cast<InspectDatabaseData>();
 
 	idx_t count = 0;
@@ -119,12 +120,14 @@ static void InspectDatabaseExecute(ClientContext &context, TableFunctionInput &d
 	output.SetCardinality(count);
 }
 
-static void LoadInternal(ExtensionLoader &loader) {
+void LoadInternal(ExtensionLoader &loader) {
 	// Register inspect_database() table function
 	TableFunction inspect_database_func("inspect_database", {}, InspectDatabaseExecute, InspectDatabaseBind,
 	                                    InspectDatabaseInit);
 	loader.RegisterFunction(inspect_database_func);
 }
+
+} // namespace
 
 void TableInspectorExtension::Load(ExtensionLoader &loader) {
 	LoadInternal(loader);
