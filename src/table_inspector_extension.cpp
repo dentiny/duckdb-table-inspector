@@ -6,6 +6,7 @@
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
+#include "duckdb/catalog/default/default_schemas.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/function/table_function.hpp"
 
@@ -61,16 +62,15 @@ unique_ptr<FunctionData> InspectDatabaseBind(ClientContext &context, TableFuncti
 unique_ptr<GlobalTableFunctionState> InspectDatabaseInit(ClientContext &context, TableFunctionInitInput &input) {
 	auto result = make_uniq<InspectDatabaseData>();
 
-	// Get all schemas from all databases
+	// INVALID_CATALOG is an empty string ("") that tells GetCatalog to retrieve schemas from all accessible catalogs
 	auto &catalog = Catalog::GetCatalog(context, INVALID_CATALOG);
 	auto schemas = catalog.GetSchemas(context);
 
 	for (auto &schema_ref : schemas) {
 		auto &schema = schema_ref.get();
 
-		// Skip internal schemas (as defined in duckdb/src/catalog/default/default_schemas.cpp)
-		// DuckDB only has two internal schemas: pg_catalog and information_schema
-		if (schema.name == "pg_catalog" || schema.name == "information_schema") {
+		// Skip internal schemas (pg_catalog, information_schema)
+		if (DefaultSchemaGenerator::IsDefaultSchema(schema.name)) {
 			continue;
 		}
 
