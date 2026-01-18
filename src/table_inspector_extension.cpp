@@ -1,3 +1,4 @@
+#include "duckdb/common/assert.hpp"
 #define DUCKDB_EXTENSION_MAIN
 
 #include "table_inspector_extension.hpp"
@@ -32,25 +33,25 @@ struct InspectDatabaseData : public GlobalTableFunctionState {
 
 unique_ptr<FunctionData> InspectDatabaseBind(ClientContext &context, TableFunctionBindInput &input,
                                              vector<LogicalType> &return_types, vector<string> &names) {
-	// Define output columns
+
+	D_ASSERT(names.empty());
+	D_ASSERT(return_types.empty());
+
+	//Define output columns
+	names.reserve(7);
+	return_types.reserve(7);
 	names.emplace_back("database_name");
 	return_types.emplace_back(LogicalType::VARCHAR);
-
 	names.emplace_back("schema_name");
 	return_types.emplace_back(LogicalType::VARCHAR);
-
 	names.emplace_back("table_name");
 	return_types.emplace_back(LogicalType::VARCHAR);
-
 	names.emplace_back("row_count");
 	return_types.emplace_back(LogicalType::BIGINT);
-
 	names.emplace_back("column_count");
 	return_types.emplace_back(LogicalType::BIGINT);
-
 	names.emplace_back("size_bytes");
 	return_types.emplace_back(LogicalType::BIGINT);
-
 	names.emplace_back("size_format");
 	return_types.emplace_back(LogicalType::VARCHAR);
 
@@ -94,24 +95,24 @@ void InspectDatabaseExecute(ClientContext &context, TableFunctionInput &data, Da
 
 	idx_t count = 0;
 
-	constexpr idx_t database_name_idx = 0;
-	constexpr idx_t schema_name_idx = 1;
-	constexpr idx_t table_name_idx = 2;
-	constexpr idx_t row_count_idx = 3;
-	constexpr idx_t column_count_idx = 4;
-	constexpr idx_t size_bytes_idx = 5;
-	constexpr idx_t size_format_idx = 6;
+	constexpr idx_t DATABASE_NAME_IDX = 0;
+	constexpr idx_t SCHEMA_NAME_IDX = 1;
+	constexpr idx_t TABLE_NAME_IDX = 2;
+	constexpr idx_t ROW_COUNT_IDX = 3;
+	constexpr idx_t COLUMN_COUNT_IDX = 4;
+	constexpr idx_t SIZE_BYTES_IDX = 5;
+	constexpr idx_t SIZE_FORMAT_IDX = 6;
 
 	while (state.offset < state.entries.size() && count < STANDARD_VECTOR_SIZE) {
 		auto &entry = state.entries[state.offset];
 
-		output.SetValue(database_name_idx, count, Value(entry.database_name));
-		output.SetValue(schema_name_idx, count, Value(entry.schema_name));
-		output.SetValue(table_name_idx, count, Value(entry.table_name));
-		output.SetValue(row_count_idx, count, Value::BIGINT(0));
-		output.SetValue(column_count_idx, count, Value::BIGINT(0));
-		output.SetValue(size_bytes_idx, count, Value::BIGINT(0));
-		output.SetValue(size_format_idx, count, Value("0 B"));
+		output.SetValue(DATABASE_NAME_IDX, count, Value(entry.database_name));
+		output.SetValue(SCHEMA_NAME_IDX, count, Value(entry.schema_name));
+		output.SetValue(TABLE_NAME_IDX, count, Value(entry.table_name));
+		output.SetValue(ROW_COUNT_IDX, count, Value::BIGINT(0));
+		output.SetValue(COLUMN_COUNT_IDX, count, Value::BIGINT(0));
+		output.SetValue(SIZE_BYTES_IDX, count, Value::BIGINT(0));
+		output.SetValue(SIZE_FORMAT_IDX, count, Value("0 B"));
 
 		state.offset++;
 		count++;
