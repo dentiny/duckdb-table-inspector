@@ -1,5 +1,5 @@
-# name: test/sql/table_inspector.test
-# description: test table_inspector extension
+# name: test/sql/inspect_database.test
+# description: test inspect_database function
 # group: [table_inspector]
 
 require table_inspector
