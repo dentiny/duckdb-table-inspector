@@ -1,4 +1,3 @@
-#include "duckdb/common/assert.hpp"
 #define DUCKDB_EXTENSION_MAIN
 
 #include "table_inspector_extension.hpp"
@@ -34,11 +33,10 @@ struct InspectDatabaseData : public GlobalTableFunctionState {
 
 unique_ptr<FunctionData> InspectDatabaseBind(ClientContext &context, TableFunctionBindInput &input,
                                              vector<LogicalType> &return_types, vector<string> &names) {
-
 	D_ASSERT(names.empty());
 	D_ASSERT(return_types.empty());
 
-	//Define output columns
+	// Define output columns
 	names.reserve(7);
 	return_types.reserve(7);
 	names.emplace_back("database_name");
@@ -69,7 +67,7 @@ unique_ptr<GlobalTableFunctionState> InspectDatabaseInit(ClientContext &context,
 	for (auto &schema_ref : schemas) {
 		auto &schema = schema_ref.get();
 
-		// Skip internal schemas (pg_catalog, information_schema)
+		// Skip internal schemas
 		if (DefaultSchemaGenerator::IsDefaultSchema(schema.name)) {
 			continue;
 		}
@@ -109,9 +107,9 @@ void InspectDatabaseExecute(ClientContext &context, TableFunctionInput &data, Da
 		output.SetValue(DATABASE_NAME_IDX, count, Value(entry.database_name));
 		output.SetValue(SCHEMA_NAME_IDX, count, Value(entry.schema_name));
 		output.SetValue(TABLE_NAME_IDX, count, Value(entry.table_name));
-		output.SetValue(ROW_COUNT_IDX, count, Value::BIGINT(0));
-		output.SetValue(COLUMN_COUNT_IDX, count, Value::BIGINT(0));
-		output.SetValue(SIZE_BYTES_IDX, count, Value::BIGINT(0));
+		output.SetValue(ROW_COUNT_IDX, count, Value::BIGINT(0));  // TODO
+		output.SetValue(COLUMN_COUNT_IDX, count, Value::BIGINT(0));  // TODO
+		output.SetValue(SIZE_BYTES_IDX, count, Value::BIGINT(0));  // TODO
 		output.SetValue(SIZE_FORMAT_IDX, count, Value("0 B"));
 
 		state.offset++;
