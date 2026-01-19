@@ -3,3 +3,46 @@
 # group: [table_inspector]
 
 require table_inspector
+
+# The function should return an empty result set on a clean database
+query I
+SELECT COUNT(*) FROM inspect_database();
+----
+0
+
+statement ok
+CREATE TABLE tbl1 (id int);
+
+statement ok
+CREATE TABLE tbl2 (txt varchar);
+
+# It should find all user-created tables in the main schema
+query T
+SELECT table_name FROM inspect_database() ORDER BY table_name;
+----
+tbl1
+tbl2
+
+# It should not list tables from internal schemas
+query I
+SELECT COUNT(*) FROM inspect_database() WHERE schema_name = 'information_schema';
+----
+0
+
+# It should find tables in custom schemas
+statement ok
+CREATE SCHEMA s1;
+
+statement ok
+CREATE TABLE s1.tbl3 (id int);
+
+query TT
+SELECT schema_name, table_name FROM inspect_database() WHERE schema_name = 's1';
+----
+s1	tbl3
+
+# Check placeholder values for currently unimplemented columns
+query III
+SELECT row_count, column_count, size_bytes FROM inspect_database() WHERE table_name = 'tbl1';
+----
+0	0	0
