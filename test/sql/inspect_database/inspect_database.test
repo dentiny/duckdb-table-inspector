@@ -1,47 +1,8 @@
-# name: test/sql/inspect_database.test
-# description: test inspect_database function
+# name: test/sql/inspect_database/inspect_database.test
+# description: test inspect_database function with persistent databases
 # group: [table_inspector]
 
 require table_inspector
-
-# =====================================================
-# Test 1: Default in-memory database should throw error
-# =====================================================
-
-statement error
-SELECT * FROM inspect_database();
-----
-inspect_database() requires a persistent database file
-
-# =====================================================
-# Test 2: Explicit :memory: database via ATTACH
-# =====================================================
-
-statement ok
-ATTACH ':memory:' AS memdb;
-
-statement ok
-USE memdb;
-
-statement ok
-CREATE TABLE test_table (id INT);
-
-# Should still fail because memdb is in-memory
-statement error
-SELECT * FROM inspect_database();
-----
-inspect_database() requires a persistent database file
-
-# Cleanup
-statement ok
-USE memory;
-
-statement ok
-DETACH memdb;
-
-# =====================================================
-# Test 3: Persistent database should work
-# =====================================================
 
 # Create and use a persistent database file
 statement ok
