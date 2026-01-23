@@ -1,0 +1,102 @@
+# name: test/sql/inspect_database_accuracy.test
+# description: Test accuracy of inspect_database() size estimation
+# group: [table_inspector]
+
+require table_inspector
+
+# Use a persistent database file to test storage
+statement ok
+ATTACH '__TEST_DIR__/inspect_accuracy.db' AS testdb;
+
+statement ok
+USE testdb;
+
+# Basic size estimation accuracy
+statement ok
+CREATE TABLE test_data (id INTEGER, name VARCHAR);
+
+statement ok
+INSERT INTO test_data SELECT i, 'name_' || i FROM range(10000) t(i);
+
+statement ok
+CHECKPOINT;
+
+# Verify row_count and column_count
+query III
+SELECT table_name, row_count, column_count FROM inspect_database() WHERE table_name = 'test_data';
+----
+test_data	10000	2
+
+# Verify size_bytes is positive after checkpoint
+query I
+SELECT size_bytes > 0 FROM inspect_database() WHERE table_name = 'test_data';
+----
+1
+
+# Index size calculation - indexes should make tables larger
+# Create table without index (use larger data for reliable index allocation)
+statement ok
+CREATE TABLE no_index_table AS SELECT range AS id, range::VARCHAR AS val FROM range(100000);
+
+# Create table with same data but with indexes
+statement ok
+CREATE TABLE with_index_table (id INT, val VARCHAR);
+
+statement ok
+INSERT INTO with_index_table SELECT range, range::VARCHAR FROM range(100000);
+
+# Create multiple indexes to ensure significant size difference
+statement ok
+CREATE INDEX idx_id ON with_index_table(id);
+
+statement ok
+CREATE INDEX idx_val ON with_index_table(val);
+
+statement ok
+CHECKPOINT;
+
+# Force database re-open so indexes become UnboundIndex
+# This allows accurate measurement of persistent index size on disk
+statement ok
+USE memory;
+
+statement ok
+DETACH testdb;
+
+statement ok
+ATTACH '__TEST_DIR__/inspect_accuracy.db' AS testdb;
+
+statement ok
+USE testdb;
+
+# Table with indexes should be larger than table without indexes
+query I
+SELECT (SELECT size_bytes FROM inspect_database() WHERE table_name = 'with_index_table') >
+       (SELECT size_bytes FROM inspect_database() WHERE table_name = 'no_index_table');
+----
+1
+
+# Empty table should have zero size
+statement ok
+CREATE TABLE empty_table (id INT, data VARCHAR);
+
+# Need to checkpoint and re-attach to ensure consistent state
+statement ok
+CHECKPOINT;
+
+statement ok
+USE memory;
+
+statement ok
+DETACH testdb;
+
+statement ok
+ATTACH '__TEST_DIR__/inspect_accuracy.db' AS testdb;
+
+statement ok
+USE testdb;
+
+query II
+SELECT row_count, size_bytes FROM inspect_database() WHERE table_name = 'empty_table';
+----
+0	0
