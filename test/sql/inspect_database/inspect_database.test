@@ -1,15 +1,23 @@
-# name: test/sql/inspect_database.test
-# description: test inspect_database function
+# name: test/sql/inspect_database/inspect_database.test
+# description: test inspect_database function with persistent databases
 # group: [table_inspector]
 
 require table_inspector
 
-# The function should return an empty result set on a clean database
+# Create and use a persistent database file
+statement ok
+ATTACH '__TEST_DIR__/test_inspect.duckdb' AS testdb;
+
+statement ok
+USE testdb;
+
+# Empty database should return 0 rows
 query I
 SELECT COUNT(*) FROM inspect_database();
 ----
 0
 
+# Create some tables
 statement ok
 CREATE TABLE tbl1 (id int);
 
@@ -46,3 +54,10 @@ query III
 SELECT row_count, column_count, size_bytes FROM inspect_database() WHERE table_name = 'tbl1';
 ----
 0	0	0
+
+# Cleanup
+statement ok
+USE memory;
+
+statement ok
+DETACH testdb;

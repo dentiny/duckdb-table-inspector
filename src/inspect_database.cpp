@@ -59,8 +59,25 @@ unique_ptr<FunctionData> InspectDatabaseBind(ClientContext &context, TableFuncti
 unique_ptr<GlobalTableFunctionState> InspectDatabaseInit(ClientContext &context, TableFunctionInitInput &input) {
 	auto result = make_uniq<InspectDatabaseData>();
 
-	// INVALID_CATALOG retrieves schemas from all accessible catalogs
+	// INVALID_CATALOG retrieves the currently active catalog
 	auto &catalog = Catalog::GetCatalog(context, INVALID_CATALOG);
+
+	// Check if database is persistent
+	// inspect_database() requires a persistent database file because it measures
+	// on-disk storage size.
+	if (catalog.InMemory()) {
+		throw InvalidInputException("inspect_database() requires a persistent database file.\n"
+		                            "This tool is designed to analyze the storage size of existing .duckdb files.\n\n"
+		                            "Correct usage:\n"
+		                            "  1. Open a database file directly:\n"
+		                            "     $ duckdb mydata.duckdb\n"
+		                            "     D SELECT * FROM inspect_database();\n\n"
+		                            "  2. Or attach a database file:\n"
+		                            "     D ATTACH 'mydata.duckdb' AS mydb;\n"
+		                            "     D USE mydb;\n"
+		                            "     D SELECT * FROM inspect_database();\n\n");
+	}
+
 	auto schemas = catalog.GetSchemas(context);
 
 	for (auto &schema_ref : schemas) {

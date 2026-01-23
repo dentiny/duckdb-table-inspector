@@ -1,0 +1,33 @@
+# name: test/sql/inspect_database/inspect_database_inmemory.test
+# description: test inspect_database function rejects in-memory databases
+# group: [table_inspector]
+
+require table_inspector
+
+# Default in-memory database should throw error
+statement error
+SELECT * FROM inspect_database();
+----
+inspect_database() requires a persistent database file
+
+# Explicit :memory: database via ATTACH should also fail
+statement ok
+ATTACH ':memory:' AS memdb;
+
+statement ok
+USE memdb;
+
+statement ok
+CREATE TABLE test_table (id INT);
+
+statement error
+SELECT * FROM inspect_database();
+----
+inspect_database() requires a persistent database file
+
+# Cleanup
+statement ok
+USE memory;
+
+statement ok
+DETACH memdb;
