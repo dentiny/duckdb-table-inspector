@@ -49,19 +49,7 @@ SELECT schema_name, table_name FROM inspect_database() WHERE schema_name = 's1';
 ----
 s1	tbl3
 
-# Test column_count is correct (tbl1 has 1 column: id int)
-query I
-SELECT column_count FROM inspect_database() WHERE table_name = 'tbl1';
-----
-1
-
-# Test row_count for empty table
-query I
-SELECT row_count FROM inspect_database() WHERE table_name = 'tbl1';
-----
-0
-
-# Insert data and verify row_count updates
+# Insert data to verify size calculation
 statement ok
 INSERT INTO tbl1 VALUES (1), (2), (3);
 
@@ -69,53 +57,26 @@ INSERT INTO tbl1 VALUES (1), (2), (3);
 statement ok
 CHECKPOINT;
 
+# Test persisted_total_size_bytes is non-zero after CHECKPOINT
 query I
-SELECT row_count FROM inspect_database() WHERE table_name = 'tbl1';
-----
-3
-
-# Test size_bytes is non-zero after CHECKPOINT
-query I
-SELECT size_bytes > 0 FROM inspect_database() WHERE table_name = 'tbl1';
+SELECT persisted_total_size_bytes > 0 FROM inspect_database() WHERE table_name = 'tbl1';
 ----
 true
 
-# Test size_format is not "0 B"
+# Test persisted_total_size_format is not "0 B"
 query I
-SELECT size_format != '0 B' FROM inspect_database() WHERE table_name = 'tbl1';
-----
-true
-
-# Create a table with multiple columns to test column_count
-statement ok
-CREATE TABLE multi_col (a INT, b VARCHAR, c DOUBLE, d BOOLEAN);
-
-query I
-SELECT column_count FROM inspect_database() WHERE table_name = 'multi_col';
-----
-4
-
-# Insert data into multi_col and checkpoint
-statement ok
-INSERT INTO multi_col VALUES (1, 'test', 1.5, true), (2, 'data', 2.5, false);
-
-statement ok
-CHECKPOINT;
-
-# Verify multi_col has size
-query I
-SELECT size_bytes > 0 FROM inspect_database() WHERE table_name = 'multi_col';
+SELECT persisted_total_size_format != '0 B' FROM inspect_database() WHERE table_name = 'tbl1';
 ----
 true
 
 # Verify that we can query all columns successfully
 query I
 SELECT COUNT(*) FROM (
-    SELECT database_name, schema_name, table_name, row_count, column_count, size_bytes, size_format
+    SELECT database_name, schema_name, table_name, persisted_data_size_bytes, persisted_index_size_bytes, persisted_total_size_bytes, persisted_total_size_format
     FROM inspect_database()
 );
 ----
-4
+3
 
 # Verify database_name is correct
 query T
@@ -126,12 +87,12 @@ testdb
 # Verify tables are sorted by size descending
 query I
 SELECT COUNT(*) FROM (
-    SELECT size_bytes, 
-           LAG(size_bytes) OVER () as prev_size
+    SELECT persisted_total_size_bytes, 
+           LAG(persisted_total_size_bytes) OVER () as prev_size
     FROM inspect_database()
-) WHERE prev_size IS NULL OR prev_size >= size_bytes;
+) WHERE prev_size IS NULL OR prev_size >= persisted_total_size_bytes;
 ----
-4
+3
 
 # Cleanup
 statement ok

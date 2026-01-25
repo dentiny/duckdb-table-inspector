@@ -21,15 +21,9 @@ INSERT INTO test_data SELECT i, 'name_' || i FROM range(10000) t(i);
 statement ok
 CHECKPOINT;
 
-# Verify row_count and column_count
-query III
-SELECT table_name, row_count, column_count FROM inspect_database() WHERE table_name = 'test_data';
-----
-test_data	10000	2
-
-# Verify size_bytes is positive after checkpoint
+# Verify persisted_total_size_bytes is positive after checkpoint
 query I
-SELECT size_bytes > 0 FROM inspect_database() WHERE table_name = 'test_data';
+SELECT persisted_total_size_bytes > 0 FROM inspect_database() WHERE table_name = 'test_data';
 ----
 1
 
@@ -71,10 +65,29 @@ USE testdb;
 
 # Table with indexes should be larger than table without indexes
 query I
-SELECT (SELECT size_bytes FROM inspect_database() WHERE table_name = 'with_index_table') >
-       (SELECT size_bytes FROM inspect_database() WHERE table_name = 'no_index_table');
+SELECT (SELECT persisted_total_size_bytes FROM inspect_database() WHERE table_name = 'with_index_table') >
+       (SELECT persisted_total_size_bytes FROM inspect_database() WHERE table_name = 'no_index_table');
 ----
 1
+
+# Verify persisted_index_size_bytes is non-zero for table with indexes
+query I
+SELECT persisted_index_size_bytes > 0 FROM inspect_database() WHERE table_name = 'with_index_table';
+----
+1
+
+# Verify persisted_index_size_bytes is zero for table without indexes
+query I
+SELECT persisted_index_size_bytes FROM inspect_database() WHERE table_name = 'no_index_table';
+----
+0
+
+# Verify persisted_data_size_bytes + persisted_index_size_bytes = persisted_total_size_bytes
+query I
+SELECT COUNT(*) FROM inspect_database() 
+WHERE persisted_data_size_bytes + persisted_index_size_bytes = persisted_total_size_bytes;
+----
+3
 
 # Empty table should have zero size
 statement ok
@@ -96,7 +109,7 @@ ATTACH '__TEST_DIR__/inspect_accuracy.db' AS testdb;
 statement ok
 USE testdb;
 
-query II
-SELECT row_count, size_bytes FROM inspect_database() WHERE table_name = 'empty_table';
+query I
+SELECT persisted_total_size_bytes FROM inspect_database() WHERE table_name = 'empty_table';
 ----
-0	0
+0
