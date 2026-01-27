@@ -21,11 +21,11 @@ INSERT INTO test_data SELECT i, 'name_' || i FROM range(10000) t(i);
 statement ok
 CHECKPOINT;
 
-# Verify persisted_total_size_bytes is positive after checkpoint
+# Verify persisted_total_size is not "0 B" after checkpoint
 query I
-SELECT persisted_total_size_bytes > 0 FROM inspect_database() WHERE table_name = 'test_data';
+SELECT persisted_total_size != '0 B' FROM inspect_database() WHERE table_name = 'test_data';
 ----
-1
+true
 
 # Index size calculation - indexes should make tables larger
 # Create table without index (use larger data for reliable index allocation)
@@ -63,31 +63,17 @@ ATTACH '__TEST_DIR__/inspect_accuracy.db' AS testdb;
 statement ok
 USE testdb;
 
-# Table with indexes should be larger than table without indexes
+# Verify persisted_index_size is not "0 B" for table with indexes
 query I
-SELECT (SELECT persisted_total_size_bytes FROM inspect_database() WHERE table_name = 'with_index_table') >
-       (SELECT persisted_total_size_bytes FROM inspect_database() WHERE table_name = 'no_index_table');
+SELECT persisted_index_size != '0 B' FROM inspect_database() WHERE table_name = 'with_index_table';
 ----
-1
+true
 
-# Verify persisted_index_size_bytes is non-zero for table with indexes
-query I
-SELECT persisted_index_size_bytes > 0 FROM inspect_database() WHERE table_name = 'with_index_table';
+# Verify persisted_index_size is "0 B" for table without indexes
+query T
+SELECT persisted_index_size FROM inspect_database() WHERE table_name = 'no_index_table';
 ----
-1
-
-# Verify persisted_index_size_bytes is zero for table without indexes
-query I
-SELECT persisted_index_size_bytes FROM inspect_database() WHERE table_name = 'no_index_table';
-----
-0
-
-# Verify persisted_data_size_bytes + persisted_index_size_bytes = persisted_total_size_bytes
-query I
-SELECT COUNT(*) FROM inspect_database() 
-WHERE persisted_data_size_bytes + persisted_index_size_bytes = persisted_total_size_bytes;
-----
-3
+0 B
 
 # Empty table should have zero size
 statement ok
@@ -109,7 +95,7 @@ ATTACH '__TEST_DIR__/inspect_accuracy.db' AS testdb;
 statement ok
 USE testdb;
 
-query I
-SELECT persisted_total_size_bytes FROM inspect_database() WHERE table_name = 'empty_table';
+query T
+SELECT persisted_total_size FROM inspect_database() WHERE table_name = 'empty_table';
 ----
-0
+0 B

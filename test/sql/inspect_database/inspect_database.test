@@ -57,22 +57,16 @@ INSERT INTO tbl1 VALUES (1), (2), (3);
 statement ok
 CHECKPOINT;
 
-# Test persisted_total_size_bytes is non-zero after CHECKPOINT
+# Test persisted_total_size is not "0 B" after CHECKPOINT
 query I
-SELECT persisted_total_size_bytes > 0 FROM inspect_database() WHERE table_name = 'tbl1';
-----
-true
-
-# Test persisted_total_size_format is not "0 B"
-query I
-SELECT persisted_total_size_format != '0 B' FROM inspect_database() WHERE table_name = 'tbl1';
+SELECT persisted_total_size != '0 B' FROM inspect_database() WHERE table_name = 'tbl1';
 ----
 true
 
 # Verify that we can query all columns successfully
 query I
 SELECT COUNT(*) FROM (
-    SELECT database_name, schema_name, table_name, persisted_data_size_bytes, persisted_index_size_bytes, persisted_total_size_bytes, persisted_total_size_format
+    SELECT database_name, schema_name, table_name, persisted_data_size, persisted_index_size, persisted_total_size
     FROM inspect_database()
 );
 ----
@@ -84,13 +78,9 @@ SELECT DISTINCT database_name FROM inspect_database();
 ----
 testdb
 
-# Verify tables are sorted by size descending
+# Verify all tables have persisted_total_size column
 query I
-SELECT COUNT(*) FROM (
-    SELECT persisted_total_size_bytes, 
-           LAG(persisted_total_size_bytes) OVER () as prev_size
-    FROM inspect_database()
-) WHERE prev_size IS NULL OR prev_size >= persisted_total_size_bytes;
+SELECT COUNT(*) FROM inspect_database() WHERE persisted_total_size IS NOT NULL;
 ----
 3
 
