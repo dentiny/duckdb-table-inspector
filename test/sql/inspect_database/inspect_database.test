@@ -52,7 +52,7 @@ s1	tbl3
 # Verify that we can query all columns successfully
 query I
 SELECT COUNT(*) FROM (
-    SELECT database_name, schema_name, table_name, persisted_data_size, persisted_index_size, persisted_total_size
+    SELECT database_name, schema_name, table_name, persisted_data_size, persisted_index_size
     FROM inspect_database()
 );
 ----
@@ -63,12 +63,6 @@ query T
 SELECT DISTINCT database_name FROM inspect_database();
 ----
 testdb
-
-# Verify all tables have persisted_total_size column
-query I
-SELECT COUNT(*) FROM inspect_database() WHERE persisted_total_size IS NOT NULL;
-----
-3
 
 # Cleanup
 statement ok

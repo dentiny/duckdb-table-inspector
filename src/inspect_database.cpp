@@ -1,7 +1,5 @@
 #include "inspect_database.hpp"
 
-#include <algorithm>
-
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
 #include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
@@ -138,7 +136,6 @@ struct InspectDatabaseData : public GlobalTableFunctionState {
 		string table_name;
 		idx_t persisted_data_size_bytes = 0;
 		idx_t persisted_index_size_bytes = 0;
-		idx_t persisted_total_size_bytes = 0;
 	};
 
 	vector<TableEntry> entries;
@@ -151,8 +148,8 @@ unique_ptr<FunctionData> InspectDatabaseBind(ClientContext &context, TableFuncti
 	D_ASSERT(return_types.empty());
 
 	// Define output columns
-	names.reserve(6);
-	return_types.reserve(6);
+	names.reserve(5);
+	return_types.reserve(5);
 	names.emplace_back("database_name");
 	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 	names.emplace_back("schema_name");
@@ -162,8 +159,6 @@ unique_ptr<FunctionData> InspectDatabaseBind(ClientContext &context, TableFuncti
 	names.emplace_back("persisted_data_size");
 	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 	names.emplace_back("persisted_index_size");
-	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
-	names.emplace_back("persisted_total_size");
 	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 
 	return nullptr;
@@ -212,26 +207,16 @@ unique_ptr<GlobalTableFunctionState> InspectDatabaseInit(ClientContext &context,
 			// Get index size.
 			const idx_t index_bytes = GetTableIndexSize(table);
 
-			// Total size = data + indexes.
-			const idx_t total_bytes = data_bytes + index_bytes;
-
 			InspectDatabaseData::TableEntry table_entry;
 			table_entry.database_name = table.ParentCatalog().GetName();
 			table_entry.schema_name = schema.name;
 			table_entry.table_name = table.name;
 			table_entry.persisted_data_size_bytes = data_bytes;
 			table_entry.persisted_index_size_bytes = index_bytes;
-			table_entry.persisted_total_size_bytes = total_bytes;
 
 			result->entries.push_back(std::move(table_entry));
 		});
 	}
-
-	// Sort tables by size in descending order.
-	std::sort(result->entries.begin(), result->entries.end(),
-	          [](const InspectDatabaseData::TableEntry &a, const InspectDatabaseData::TableEntry &b) {
-		          return a.persisted_total_size_bytes > b.persisted_total_size_bytes;
-	          });
 
 	return std::move(result);
 }
@@ -246,7 +231,6 @@ void InspectDatabaseExecute(ClientContext &context, TableFunctionInput &data, Da
 	constexpr idx_t TABLE_NAME_IDX = 2;
 	constexpr idx_t DATA_SIZE_IDX = 3;
 	constexpr idx_t INDEX_SIZE_IDX = 4;
-	constexpr idx_t TOTAL_SIZE_IDX = 5;
 
 	while (state.offset < state.entries.size() && count < STANDARD_VECTOR_SIZE) {
 		auto &entry = state.entries[state.offset];
@@ -256,7 +240,6 @@ void InspectDatabaseExecute(ClientContext &context, TableFunctionInput &data, Da
 		output.SetValue(TABLE_NAME_IDX, count, Value(entry.table_name));
 		output.SetValue(DATA_SIZE_IDX, count, Value(FormatSize(entry.persisted_data_size_bytes)));
 		output.SetValue(INDEX_SIZE_IDX, count, Value(FormatSize(entry.persisted_index_size_bytes)));
-		output.SetValue(TOTAL_SIZE_IDX, count, Value(FormatSize(entry.persisted_total_size_bytes)));
 
 		state.offset++;
 		count++;
