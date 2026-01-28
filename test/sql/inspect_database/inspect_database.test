@@ -49,20 +49,6 @@ SELECT schema_name, table_name FROM inspect_database() WHERE schema_name = 's1';
 ----
 s1	tbl3
 
-# Insert data to verify size calculation
-statement ok
-INSERT INTO tbl1 VALUES (1), (2), (3);
-
-# CHECKPOINT to persist data to disk
-statement ok
-CHECKPOINT;
-
-# Test persisted_total_size is not "0 B" after CHECKPOINT
-query I
-SELECT persisted_total_size != '0 B' FROM inspect_database() WHERE table_name = 'tbl1';
-----
-true
-
 # Verify that we can query all columns successfully
 query I
 SELECT COUNT(*) FROM (

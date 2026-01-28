@@ -11,9 +11,15 @@ ATTACH '__TEST_DIR__/inspect_accuracy.db' AS testdb;
 statement ok
 USE testdb;
 
-# Basic size estimation accuracy
+# Table data size updates immediately after CHECKPOINT
 statement ok
 CREATE TABLE test_data (id INTEGER, name VARCHAR);
+
+# Before INSERT: empty table has "0 B" persisted_data_size
+query T
+SELECT persisted_data_size FROM inspect_database() WHERE table_name = 'test_data';
+----
+0 B
 
 statement ok
 INSERT INTO test_data SELECT i, 'name_' || i FROM range(10000) t(i);
@@ -21,9 +27,9 @@ INSERT INTO test_data SELECT i, 'name_' || i FROM range(10000) t(i);
 statement ok
 CHECKPOINT;
 
-# Verify persisted_total_size is not "0 B" after checkpoint
+# After CHECKPOINT: data is on disk, persisted_data_size should not be "0 B"
 query I
-SELECT persisted_total_size != '0 B' FROM inspect_database() WHERE table_name = 'test_data';
+SELECT persisted_data_size != '0 B' FROM inspect_database() WHERE table_name = 'test_data';
 ----
 true
 
@@ -49,8 +55,7 @@ CREATE INDEX idx_val ON with_index_table(val);
 statement ok
 CHECKPOINT;
 
-# Force database re-open so indexes become UnboundIndex
-# This allows accurate measurement of persistent index size on disk
+# Force database re-open for accurate measurement of persistent index size on disk
 statement ok
 USE memory;
 
@@ -72,30 +77,5 @@ true
 # Verify persisted_index_size is "0 B" for table without indexes
 query T
 SELECT persisted_index_size FROM inspect_database() WHERE table_name = 'no_index_table';
-----
-0 B
-
-# Empty table should have zero size
-statement ok
-CREATE TABLE empty_table (id INT, data VARCHAR);
-
-# Need to checkpoint and re-attach to ensure consistent state
-statement ok
-CHECKPOINT;
-
-statement ok
-USE memory;
-
-statement ok
-DETACH testdb;
-
-statement ok
-ATTACH '__TEST_DIR__/inspect_accuracy.db' AS testdb;
-
-statement ok
-USE testdb;
-
-query T
-SELECT persisted_total_size FROM inspect_database() WHERE table_name = 'empty_table';
 ----
 0 B
