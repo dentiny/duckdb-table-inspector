@@ -86,22 +86,15 @@ idx_t CalculateTableDataSize(const vector<ColumnSegmentInfo> &segment_info, Tabl
 // Index Size Calculation
 //===--------------------------------------------------------------------===//
 
-idx_t CalculateIndexSizeFromStorageInfo(const IndexStorageInfo &index_info, TableCatalogEntry &table) {
-	// Get actual block allocation size from storage manager
-	auto &storage_manager = table.ParentCatalog().GetAttached().GetStorageManager();
-	const idx_t block_alloc_size = storage_manager.GetBlockManager().GetBlockAllocSize();
-
-	// Collect unique block IDs from all allocator infos
-	// Use unordered_set to avoid counting the same block multiple times
-	unordered_set<block_id_t> unique_blocks;
+idx_t CalculateIndexSizeFromStorageInfo(const IndexStorageInfo &index_info) {
+	// Sum allocation sizes from all allocator infos
+	idx_t total = 0;
 	for (const auto &alloc_info : index_info.allocator_infos) {
-		for (const auto &block_ptr : alloc_info.block_pointers) {
-			if (block_ptr.block_id != INVALID_BLOCK) {
-				unique_blocks.insert(block_ptr.block_id);
-			}
+		for (const auto &alloc_size : alloc_info.allocation_sizes) {
+			total += alloc_size;
 		}
 	}
-	return unique_blocks.size() * block_alloc_size;
+	return total;
 }
 
 //===--------------------------------------------------------------------===//
@@ -125,7 +118,7 @@ idx_t GetTableIndexSize(TableCatalogEntry &table) {
 
 	idx_t total_index_bytes = 0;
 	for (const auto &storage_info : index_storage_infos) {
-		total_index_bytes += CalculateIndexSizeFromStorageInfo(storage_info, table);
+		total_index_bytes += CalculateIndexSizeFromStorageInfo(storage_info);
 	}
 
 	return total_index_bytes;
