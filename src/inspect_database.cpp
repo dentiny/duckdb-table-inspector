@@ -201,7 +201,7 @@ unique_ptr<GlobalTableFunctionState> InspectDatabaseInit(ClientContext &context,
 			auto &table = entry.Cast<TableCatalogEntry>();
 
 			// Calculate table data size using unique data blocks.
-			const auto segment_info = table.GetColumnSegmentInfo();
+			const auto segment_info = table.GetColumnSegmentInfo(context);
 			const idx_t data_bytes = CalculateTableDataSize(segment_info, table);
 
 			// Get index size.
