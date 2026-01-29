@@ -1,0 +1,34 @@
+# name: test/sql/inspect_database_accuracy.test
+# description: Test accuracy of inspect_database() size estimation
+# group: [table_inspector]
+
+require table_inspector
+
+# Use a persistent database file to test storage
+statement ok
+ATTACH '__TEST_DIR__/inspect_accuracy.db' AS testdb;
+
+statement ok
+USE testdb;
+
+# Table data size updates immediately after CHECKPOINT
+statement ok
+CREATE TABLE test_data (id INTEGER, name VARCHAR);
+
+# Before INSERT: empty table has "0 B" persisted_data_size
+query T
+SELECT persisted_data_size FROM inspect_database() WHERE table_name = 'test_data';
+----
+0 B
+
+statement ok
+INSERT INTO test_data SELECT i, 'name_' || i FROM range(10000) t(i);
+
+statement ok
+CHECKPOINT;
+
+# After CHECKPOINT: data is on disk, persisted_data_size should not be "0 B"
+query I
+SELECT persisted_data_size != '0 B' FROM inspect_database() WHERE table_name = 'test_data';
+----
+true

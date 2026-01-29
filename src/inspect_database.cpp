@@ -4,16 +4,80 @@
 #include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/catalog/default/default_schemas.hpp"
+#include "duckdb/common/array.hpp"
 #include "duckdb/common/assert.hpp"
 #include "duckdb/common/exception.hpp"
+#include "duckdb/common/unordered_set.hpp"
 #include "duckdb/function/table_function.hpp"
+#include "duckdb/main/attached_database.hpp"
+#include "duckdb/storage/storage_info.hpp"
+#include "duckdb/storage/storage_manager.hpp"
+#include "duckdb/storage/table_storage_info.hpp"
 
 namespace duckdb {
 
 namespace {
 
 //===--------------------------------------------------------------------===//
-// inspect_database() - List all tables
+// Helper Functions - Size Formatting
+//===--------------------------------------------------------------------===//
+
+string FormatSize(idx_t bytes) {
+	const char *units[] = {"B", "KiB", "MiB", "GiB", "TiB"};
+	int32_t unit_idx = 0;
+	double size = static_cast<double>(bytes);
+
+	while (size >= 1024.0 && unit_idx < 4) {
+		size /= 1024.0;
+		unit_idx++;
+	}
+
+	array<char, 32> buffer;
+	if (unit_idx == 0) {
+		snprintf(buffer.data(), buffer.size(), "%.0f %s", size, units[unit_idx]);
+	} else {
+		snprintf(buffer.data(), buffer.size(), "%.1f %s", size, units[unit_idx]);
+	}
+	return string(buffer.data());
+}
+
+//===--------------------------------------------------------------------===//
+// Table Data Size Calculation - Block Counting Method
+//===--------------------------------------------------------------------===//
+
+// Calculates table data size by counting unique blocks used by the table.
+// Only counts persistent segments (data checkpointed to disk).
+// - Collects all unique block IDs used by table segments.
+// - Each block contributes the database's configured block allocation size.
+
+idx_t CalculateTableDataSize(const vector<ColumnSegmentInfo> &segment_info, TableCatalogEntry &table) {
+	if (segment_info.empty()) {
+		return 0;
+	}
+
+	// Collect unique block IDs from all segments
+	unordered_set<block_id_t> unique_blocks;
+
+	for (const auto &seg : segment_info) {
+		// Only count persistent segments on real blocks (skip constant segments)
+		if (seg.persistent && seg.block_id != INVALID_BLOCK) {
+			unique_blocks.insert(seg.block_id);
+			// Additional blocks are full blocks
+			for (const auto &block_id : seg.additional_blocks) {
+				D_ASSERT(block_id != INVALID_BLOCK);
+				unique_blocks.insert(block_id);
+			}
+		}
+	}
+
+	// Get actual block allocation size from storage manager
+	auto &storage_manager = table.ParentCatalog().GetAttached().GetStorageManager();
+	const idx_t block_alloc_size = storage_manager.GetBlockManager().GetBlockAllocSize();
+	return unique_blocks.size() * block_alloc_size;
+}
+
+//===--------------------------------------------------------------------===//
+// inspect_database() - List all tables with storage info
 //===--------------------------------------------------------------------===//
 
 struct InspectDatabaseData : public GlobalTableFunctionState {
@@ -24,6 +88,7 @@ struct InspectDatabaseData : public GlobalTableFunctionState {
 		string database_name;
 		string schema_name;
 		string table_name;
+		idx_t persisted_data_size_bytes = 0;
 	};
 
 	vector<TableEntry> entries;
@@ -36,21 +101,15 @@ unique_ptr<FunctionData> InspectDatabaseBind(ClientContext &context, TableFuncti
 	D_ASSERT(return_types.empty());
 
 	// Define output columns
-	names.reserve(7);
-	return_types.reserve(7);
+	names.reserve(4);
+	return_types.reserve(4);
 	names.emplace_back("database_name");
 	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 	names.emplace_back("schema_name");
 	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 	names.emplace_back("table_name");
 	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
-	names.emplace_back("row_count");
-	return_types.emplace_back(LogicalType {LogicalTypeId::BIGINT});
-	names.emplace_back("column_count");
-	return_types.emplace_back(LogicalType {LogicalTypeId::BIGINT});
-	names.emplace_back("size_bytes");
-	return_types.emplace_back(LogicalType {LogicalTypeId::BIGINT});
-	names.emplace_back("size_format");
+	names.emplace_back("persisted_data_size");
 	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 
 	return nullptr;
@@ -92,15 +151,20 @@ unique_ptr<GlobalTableFunctionState> InspectDatabaseInit(ClientContext &context,
 		schema.Scan(context, CatalogType::TABLE_ENTRY, [&](CatalogEntry &entry) {
 			auto &table = entry.Cast<TableCatalogEntry>();
 
-			// Add entry
+			// Calculate table data size using unique data blocks.
+			const auto segment_info = table.GetColumnSegmentInfo(context);
+			const idx_t data_bytes = CalculateTableDataSize(segment_info, table);
+
 			InspectDatabaseData::TableEntry table_entry;
-			table_entry.database_name = table.catalog.GetName();
+			table_entry.database_name = table.ParentCatalog().GetName();
 			table_entry.schema_name = schema.name;
 			table_entry.table_name = table.name;
+			table_entry.persisted_data_size_bytes = data_bytes;
 
 			result->entries.push_back(std::move(table_entry));
 		});
 	}
+
 	return std::move(result);
 }
 
@@ -112,10 +176,7 @@ void InspectDatabaseExecute(ClientContext &context, TableFunctionInput &data, Da
 	constexpr idx_t DATABASE_NAME_IDX = 0;
 	constexpr idx_t SCHEMA_NAME_IDX = 1;
 	constexpr idx_t TABLE_NAME_IDX = 2;
-	constexpr idx_t ROW_COUNT_IDX = 3;
-	constexpr idx_t COLUMN_COUNT_IDX = 4;
-	constexpr idx_t SIZE_BYTES_IDX = 5;
-	constexpr idx_t SIZE_FORMAT_IDX = 6;
+	constexpr idx_t DATA_SIZE_IDX = 3;
 
 	while (state.offset < state.entries.size() && count < STANDARD_VECTOR_SIZE) {
 		auto &entry = state.entries[state.offset];
@@ -123,10 +184,7 @@ void InspectDatabaseExecute(ClientContext &context, TableFunctionInput &data, Da
 		output.SetValue(DATABASE_NAME_IDX, count, Value(entry.database_name));
 		output.SetValue(SCHEMA_NAME_IDX, count, Value(entry.schema_name));
 		output.SetValue(TABLE_NAME_IDX, count, Value(entry.table_name));
-		output.SetValue(ROW_COUNT_IDX, count, Value::BIGINT(0));    // TODO
-		output.SetValue(COLUMN_COUNT_IDX, count, Value::BIGINT(0)); // TODO
-		output.SetValue(SIZE_BYTES_IDX, count, Value::BIGINT(0));   // TODO
-		output.SetValue(SIZE_FORMAT_IDX, count, Value("0 B"));
+		output.SetValue(DATA_SIZE_IDX, count, Value(FormatSize(entry.persisted_data_size_bytes)));
 
 		state.offset++;
 		count++;

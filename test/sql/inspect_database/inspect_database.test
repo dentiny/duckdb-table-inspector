@@ -49,11 +49,20 @@ SELECT schema_name, table_name FROM inspect_database() WHERE schema_name = 's1';
 ----
 s1	tbl3
 
-# Check placeholder values for currently unimplemented columns
-query III
-SELECT row_count, column_count, size_bytes FROM inspect_database() WHERE table_name = 'tbl1';
+# Verify that we can query all columns successfully
+query I
+SELECT COUNT(*) FROM (
+    SELECT database_name, schema_name, table_name, persisted_data_size
+    FROM inspect_database()
+);
 ----
-0	0	0
+3
+
+# Verify database_name is correct
+query T
+SELECT DISTINCT database_name FROM inspect_database();
+----
+testdb
 
 # Cleanup
 statement ok
