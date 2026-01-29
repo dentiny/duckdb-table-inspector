@@ -1,5 +1,5 @@
 # name: test/sql/inspect_database/inspect_database.test
-# description: test inspect_database function with persistent databases and precise size calculation
+# description: test inspect_database function with persistent databases
 # group: [table_inspector]
 
 require table_inspector
