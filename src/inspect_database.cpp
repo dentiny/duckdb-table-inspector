@@ -1,7 +1,6 @@
 #include "inspect_database.hpp"
 
 #include "duckdb/catalog/catalog.hpp"
-#include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
 #include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/catalog/default/default_schemas.hpp"
@@ -11,11 +10,8 @@
 #include "duckdb/common/unordered_set.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/main/attached_database.hpp"
-#include "duckdb/storage/data_table.hpp"
-#include "duckdb/storage/index_storage_info.hpp"
 #include "duckdb/storage/storage_info.hpp"
 #include "duckdb/storage/storage_manager.hpp"
-#include "duckdb/storage/table/data_table_info.hpp"
 #include "duckdb/storage/table_storage_info.hpp"
 
 namespace duckdb {
@@ -81,48 +77,6 @@ idx_t CalculateTableDataSize(const vector<ColumnSegmentInfo> &segment_info, Tabl
 }
 
 //===--------------------------------------------------------------------===//
-// Index Size Calculation
-//===--------------------------------------------------------------------===//
-
-idx_t CalculateIndexSizeFromStorageInfo(const IndexStorageInfo &index_info) {
-	// Sum allocation sizes from all allocator infos
-	idx_t total = 0;
-	for (const auto &alloc_info : index_info.allocator_infos) {
-		for (const auto &alloc_size : alloc_info.allocation_sizes) {
-			total += alloc_size;
-		}
-	}
-	return total;
-}
-
-//===--------------------------------------------------------------------===//
-// Get Total Index Size for a Table
-//===--------------------------------------------------------------------===//
-
-// Gets total index size for persistent databases.
-// This data is only available after reopening the database (loaded from checkpoint).
-
-idx_t GetTableIndexSize(TableCatalogEntry &table) {
-	if (!table.IsDuckTable()) {
-		return 0;
-	}
-
-	auto &duck_table = table.Cast<DuckTableEntry>();
-	auto &storage = duck_table.GetStorage();
-	auto &info = storage.GetDataTableInfo();
-
-	// Get persisted index storage info
-	const auto &index_storage_infos = info->GetIndexStorageInfo();
-
-	idx_t total_index_bytes = 0;
-	for (const auto &storage_info : index_storage_infos) {
-		total_index_bytes += CalculateIndexSizeFromStorageInfo(storage_info);
-	}
-
-	return total_index_bytes;
-}
-
-//===--------------------------------------------------------------------===//
 // inspect_database() - List all tables with storage info
 //===--------------------------------------------------------------------===//
 
@@ -135,7 +89,6 @@ struct InspectDatabaseData : public GlobalTableFunctionState {
 		string schema_name;
 		string table_name;
 		idx_t persisted_data_size_bytes = 0;
-		idx_t persisted_index_size_bytes = 0;
 	};
 
 	vector<TableEntry> entries;
@@ -148,8 +101,8 @@ unique_ptr<FunctionData> InspectDatabaseBind(ClientContext &context, TableFuncti
 	D_ASSERT(return_types.empty());
 
 	// Define output columns
-	names.reserve(5);
-	return_types.reserve(5);
+	names.reserve(4);
+	return_types.reserve(4);
 	names.emplace_back("database_name");
 	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 	names.emplace_back("schema_name");
@@ -157,8 +110,6 @@ unique_ptr<FunctionData> InspectDatabaseBind(ClientContext &context, TableFuncti
 	names.emplace_back("table_name");
 	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 	names.emplace_back("persisted_data_size");
-	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
-	names.emplace_back("persisted_index_size");
 	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 
 	return nullptr;
@@ -204,15 +155,11 @@ unique_ptr<GlobalTableFunctionState> InspectDatabaseInit(ClientContext &context,
 			const auto segment_info = table.GetColumnSegmentInfo(context);
 			const idx_t data_bytes = CalculateTableDataSize(segment_info, table);
 
-			// Get index size.
-			const idx_t index_bytes = GetTableIndexSize(table);
-
 			InspectDatabaseData::TableEntry table_entry;
 			table_entry.database_name = table.ParentCatalog().GetName();
 			table_entry.schema_name = schema.name;
 			table_entry.table_name = table.name;
 			table_entry.persisted_data_size_bytes = data_bytes;
-			table_entry.persisted_index_size_bytes = index_bytes;
 
 			result->entries.push_back(std::move(table_entry));
 		});
@@ -230,7 +177,6 @@ void InspectDatabaseExecute(ClientContext &context, TableFunctionInput &data, Da
 	constexpr idx_t SCHEMA_NAME_IDX = 1;
 	constexpr idx_t TABLE_NAME_IDX = 2;
 	constexpr idx_t DATA_SIZE_IDX = 3;
-	constexpr idx_t INDEX_SIZE_IDX = 4;
 
 	while (state.offset < state.entries.size() && count < STANDARD_VECTOR_SIZE) {
 		auto &entry = state.entries[state.offset];
@@ -239,7 +185,6 @@ void InspectDatabaseExecute(ClientContext &context, TableFunctionInput &data, Da
 		output.SetValue(SCHEMA_NAME_IDX, count, Value(entry.schema_name));
 		output.SetValue(TABLE_NAME_IDX, count, Value(entry.table_name));
 		output.SetValue(DATA_SIZE_IDX, count, Value(FormatSize(entry.persisted_data_size_bytes)));
-		output.SetValue(INDEX_SIZE_IDX, count, Value(FormatSize(entry.persisted_index_size_bytes)));
 
 		state.offset++;
 		count++;
