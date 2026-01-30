@@ -1,10 +1,10 @@
 #include "inspect_database.hpp"
+#include "util.hpp"
 
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/catalog/default/default_schemas.hpp"
-#include "duckdb/common/array.hpp"
 #include "duckdb/common/assert.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/unordered_set.hpp"
@@ -17,29 +17,6 @@
 namespace duckdb {
 
 namespace {
-
-//===--------------------------------------------------------------------===//
-// Helper Functions - Size Formatting
-//===--------------------------------------------------------------------===//
-
-string FormatSize(idx_t bytes) {
-	const char *units[] = {"B", "KiB", "MiB", "GiB", "TiB"};
-	int32_t unit_idx = 0;
-	double size = static_cast<double>(bytes);
-
-	while (size >= 1024.0 && unit_idx < 4) {
-		size /= 1024.0;
-		unit_idx++;
-	}
-
-	array<char, 32> buffer;
-	if (unit_idx == 0) {
-		snprintf(buffer.data(), buffer.size(), "%.0f %s", size, units[unit_idx]);
-	} else {
-		snprintf(buffer.data(), buffer.size(), "%.1f %s", size, units[unit_idx]);
-	}
-	return string(buffer.data());
-}
 
 //===--------------------------------------------------------------------===//
 // Table Data Size Calculation - Block Counting Method
@@ -152,7 +129,7 @@ unique_ptr<GlobalTableFunctionState> InspectDatabaseInit(ClientContext &context,
 			auto &table = entry.Cast<TableCatalogEntry>();
 
 			// Calculate table data size using unique data blocks.
-			const auto segment_info = table.GetColumnSegmentInfo(context);
+			const auto segment_info = table.GetColumnSegmentInfo();
 			const idx_t data_bytes = CalculateTableDataSize(segment_info, table);
 
 			InspectDatabaseData::TableEntry table_entry;

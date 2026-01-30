@@ -11,7 +11,8 @@ include_directories(src/include)
 
 set(EXTENSION_SOURCES
     src/inspect_database.cpp
-    src/table_inspector_extension.cpp)
+    src/table_inspector_extension.cpp
+    src/util.cpp)
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
