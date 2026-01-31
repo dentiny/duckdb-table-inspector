@@ -9,10 +9,8 @@ set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
 project(${TARGET_NAME})
 include_directories(src/include)
 
-set(EXTENSION_SOURCES
-    src/inspect_database.cpp
-    src/table_inspector_extension.cpp
-    src/util.cpp)
+set(EXTENSION_SOURCES src/inspect_database.cpp
+                      src/table_inspector_extension.cpp src/util.cpp)
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
@@ -22,3 +20,9 @@ install(
   EXPORT "${DUCKDB_EXPORT_SET}"
   LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
   ARCHIVE DESTINATION "${INSTALL_LIB_DIR}")
+
+# Unit tests.
+include_directories(duckdb/third_party/catch)
+
+add_executable(test_util unit/test_util.cpp)
+target_link_libraries(test_util ${EXTENSION_NAME})

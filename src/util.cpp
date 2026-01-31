@@ -5,7 +5,7 @@
 namespace duckdb {
 
 string FormatSize(idx_t bytes) {
-	const char *units[] = {"B", "KiB", "MiB", "GiB", "TiB"};
+	constexpr array<const char *, 5> units = {"B", "KiB", "MiB", "GiB", "TiB"};
 	int32_t unit_idx = 0;
 	double size = static_cast<double>(bytes);
 
