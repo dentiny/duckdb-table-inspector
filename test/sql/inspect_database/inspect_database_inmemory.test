@@ -1,6 +1,6 @@
 # name: test/sql/inspect_database/inspect_database_inmemory.test
 # description: test inspect_database function rejects in-memory databases
-# group: [table_inspector]
+# group: [inspect_database]
 
 require table_inspector
 

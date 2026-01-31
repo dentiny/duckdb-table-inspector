@@ -1,6 +1,6 @@
-# name: test/sql/inspect_database_accuracy.test
+# name: test/sql/inspect_database/inspect_database_accuracy.test
 # description: Test accuracy of inspect_database() size estimation
-# group: [table_inspector]
+# group: [inspect_database]
 
 require table_inspector
 
