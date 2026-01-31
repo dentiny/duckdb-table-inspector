@@ -6,7 +6,7 @@
 namespace duckdb {
 
 // Formats a byte count into a human-readable string.
-// Output format: B, KiB, MiB, GiB, TiB (1024-based).
+// Uses the largest 1024-based (IEC) unit (B, KiB, MiB, GiB, TiB) where the value is >= 1.0.
 // Precision: bytes are integers (e.g., "512 B"), larger units have one decimal place (e.g., "1.5 MiB").
 string FormatSize(idx_t bytes);
 
