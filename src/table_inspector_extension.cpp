@@ -4,11 +4,13 @@
 
 #include "duckdb.hpp"
 #include "inspect_database.hpp"
+#include "inspect_storage.hpp"
 
 namespace duckdb {
 
 static void LoadInternal(ExtensionLoader &loader) {
 	RegisterInspectDatabaseFunction(loader);
+	RegisterInspectStorageFunction(loader);
 }
 
 void TableInspectorExtension::Load(ExtensionLoader &loader) {
