@@ -9,7 +9,7 @@ set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
 project(${TARGET_NAME})
 include_directories(src/include)
 
-set(EXTENSION_SOURCES src/inspect_database.cpp
+set(EXTENSION_SOURCES src/inspect_database.cpp src/inspect_storage.cpp
                       src/table_inspector_extension.cpp src/util.cpp)
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})

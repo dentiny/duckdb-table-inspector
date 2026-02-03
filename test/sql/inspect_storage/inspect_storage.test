@@ -1,0 +1,45 @@
+# name: test/sql/inspect_storage/inspect_storage.test
+# description: test inspect_storage function with persistent databases
+# group: [inspect_storage]
+
+require table_inspector
+
+# Create and use a persistent database file
+statement ok
+ATTACH '__TEST_DIR__/test_storage.duckdb' AS testdb;
+
+# inspect_storage should show the attached database
+query I
+SELECT COUNT(*) FROM inspect_storage() WHERE database_name = 'testdb';
+----
+1
+
+# Verify all columns are returned
+query III
+SELECT database_name, database_file_size, wal_file_size FROM inspect_storage() WHERE database_name = 'testdb';
+----
+testdb	0 B	0 B
+
+# Should not show system or temporary databases
+query I
+SELECT COUNT(*) FROM inspect_storage() WHERE database_name = 'system';
+----
+0
+
+query I
+SELECT COUNT(*) FROM inspect_storage() WHERE database_name = 'memory';
+----
+0
+
+# Create a table and checkpoint to generate file size
+statement ok
+CREATE TABLE testdb.tbl1 AS SELECT range AS id FROM range(10000);
+
+statement ok
+CHECKPOINT testdb;
+
+# After checkpoint, database file size should be non-zero
+query I
+SELECT database_file_size != '0 B' FROM inspect_storage() WHERE database_name = 'testdb';
+----
+true
