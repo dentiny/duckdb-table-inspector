@@ -43,7 +43,3 @@ query I
 SELECT database_file_size != '0 B' FROM inspect_storage() WHERE database_name = 'testdb';
 ----
 true
-
-# Cleanup
-statement ok
-DETACH testdb;

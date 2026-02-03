@@ -10,6 +10,7 @@
 #include "duckdb/common/unordered_set.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/main/attached_database.hpp"
+#include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/storage/storage_info.hpp"
 #include "duckdb/storage/storage_manager.hpp"
 #include "duckdb/storage/table_storage_info.hpp"

@@ -6,6 +6,7 @@
 #include "duckdb/common/vector.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/main/attached_database.hpp"
+#include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/main/database_manager.hpp"
 #include "duckdb/storage/database_size.hpp"
 
