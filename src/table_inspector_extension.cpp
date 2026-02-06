@@ -2,13 +2,16 @@
 
 #include "table_inspector_extension.hpp"
 
-#include "duckdb.hpp"
+#include "inspect_column.hpp"
 #include "inspect_database.hpp"
 #include "inspect_storage.hpp"
+
+#include "duckdb/main/extension/extension_loader.hpp"
 
 namespace duckdb {
 
 static void LoadInternal(ExtensionLoader &loader) {
+	RegisterInspectColumnFunction(loader);
 	RegisterInspectDatabaseFunction(loader);
 	RegisterInspectStorageFunction(loader);
 }

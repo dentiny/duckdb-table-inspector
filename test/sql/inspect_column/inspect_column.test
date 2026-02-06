@@ -1,0 +1,110 @@
+# name: test/sql/inspect_column/inspect_column.test
+# description: test inspect_column function with persistent databases
+# group: [inspect_column]
+
+require table_inspector
+
+# Create and use a persistent database file
+statement ok
+ATTACH '__TEST_DIR__/test_inspect_column.duckdb' AS testdb;
+
+statement ok
+USE testdb;
+
+# Create a table with data
+statement ok
+CREATE TABLE t (id INTEGER, name VARCHAR, amount DOUBLE);
+
+# Insert enough data to create segments
+statement ok
+INSERT INTO t SELECT i, 'test_' || i::VARCHAR, i * 1.5 FROM range(200000) r(i);
+
+# Checkpoint to persist data to disk
+statement ok
+CHECKPOINT;
+
+# Test inspect_column for INTEGER column
+query I
+SELECT COUNT(*) FROM inspect_column('testdb', 't', 'id') WHERE row_count > 0;
+----
+2
+
+# Verify column_name is correct
+query T
+SELECT DISTINCT column_name FROM inspect_column('testdb', 't', 'id');
+----
+id
+
+# Verify column_type is correct
+query T
+SELECT DISTINCT column_type FROM inspect_column('testdb', 't', 'id');
+----
+INTEGER
+
+# Test inspect_column for VARCHAR column
+query T
+SELECT DISTINCT column_name FROM inspect_column('testdb', 't', 'name');
+----
+name
+
+# VARCHAR should show N/A for estimated_decompressed_size
+query T
+SELECT DISTINCT estimated_decompressed_size FROM inspect_column('testdb', 't', 'name');
+----
+N/A
+
+# INTEGER should show actual size for estimated_decompressed_size (not N/A)
+query I
+SELECT COUNT(*) FROM inspect_column('testdb', 't', 'id') WHERE estimated_decompressed_size != 'N/A';
+----
+2
+
+# Verify all expected columns are present and at least one segment exists
+query I
+SELECT COUNT(*) > 0 FROM (
+    SELECT row_group_id, column_name, column_type, compression,
+           compressed_size, estimated_decompressed_size, row_count
+    FROM inspect_column('testdb', 't', 'amount')
+);
+----
+true
+
+# Test with schema-qualified table name
+statement ok
+CREATE SCHEMA s1;
+
+statement ok
+CREATE TABLE s1.t2 (val INTEGER);
+
+statement ok
+INSERT INTO s1.t2 SELECT i FROM range(100000) r(i);
+
+statement ok
+CHECKPOINT;
+
+query T
+SELECT DISTINCT column_name FROM inspect_column('testdb', 's1.t2', 'val');
+----
+val
+
+# Test column not found error
+statement error
+SELECT * FROM inspect_column('testdb', 't', 'nonexistent_column');
+----
+Column 'nonexistent_column' not found in table 't'
+
+# Test large segments with additional_blocks
+statement ok
+CREATE TABLE t_large (id INTEGER, big_text VARCHAR);
+
+statement ok
+INSERT INTO t_large SELECT i, repeat('x', 10000) FROM range(1000) r(i);
+
+statement ok
+CHECKPOINT;
+
+# Large segment should have size > 1 MiB (spans multiple blocks)
+query I
+SELECT COUNT(*) FROM inspect_column('testdb', 't_large', 'big_text') WHERE compressed_size LIKE '%MiB%';
+----
+1
