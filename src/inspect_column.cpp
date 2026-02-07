@@ -5,6 +5,8 @@
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/common/algorithm.hpp"
 #include "duckdb/common/assert.hpp"
+#include "duckdb/common/optional_idx.hpp"
+#include "duckdb/common/string_util.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/types.hpp"
 #include "duckdb/common/unordered_map.hpp"
@@ -35,8 +37,8 @@ struct FilteredSegmentEntry {
 };
 
 struct InspectColumnBindData : public TableFunctionData {
-	InspectColumnBindData(TableCatalogEntry &table_entry, string column_name, LogicalType column_type)
-	    : table_entry(table_entry), column_name(std::move(column_name)), column_type(std::move(column_type)) {
+	InspectColumnBindData(TableCatalogEntry &table_entry_p, string column_name_p, LogicalType column_type_p)
+	    : table_entry(table_entry_p), column_name(std::move(column_name_p)), column_type(std::move(column_type_p)) {
 	}
 
 	TableCatalogEntry &table_entry;
@@ -58,7 +60,7 @@ bool IsTargetMainDataSegment(const ColumnSegmentInfo &seg, idx_t target_column_i
 		return false;
 	}
 	// Skip validity bitmap segments (e.g., "[0, 0]") - only include main data segments ("[column_id]")
-	const string expected_path = "[" + std::to_string(seg.column_id) + "]";
+	const string expected_path = StringUtil::Format("[%d]", seg.column_id);
 	if (seg.column_path != expected_path) {
 		return false;
 	}
@@ -97,8 +99,8 @@ vector<FilteredSegmentEntry> FilterAndCalculateSegments(const vector<ColumnSegme
 
 		// Calculate compressed size by looking at the next offset in the same block
 		auto &offsets = block_to_all_offsets[seg.block_id];
-		auto it = std::find(offsets.begin(), offsets.end(), seg.block_offset);
-		D_ASSERT(it != offsets.end());
+		auto it = std::lower_bound(offsets.begin(), offsets.end(), seg.block_offset);
+		D_ASSERT(it != offsets.end() && *it == seg.block_offset);
 
 		idx_t compressed_size;
 		if (it + 1 != offsets.end()) {
@@ -129,14 +131,14 @@ vector<FilteredSegmentEntry> FilterAndCalculateSegments(const vector<ColumnSegme
 
 // Calculate estimated decompressed size
 // For fixed-size types: type_size * row_count
-// For variable-length types: return 0 (will display as "N/A")
-idx_t CalculateEstimatedDecompressedSize(const LogicalType &type, idx_t row_count) {
+// For variable-length types: returns invalid optional_idx (will display as "N/A")
+optional_idx CalculateEstimatedDecompressedSize(const LogicalType &type, idx_t row_count) {
 	const PhysicalType physical_type = type.InternalType();
 	if (!TypeIsConstantSize(physical_type)) {
-		return 0; // Variable-length type, cannot estimate
+		return optional_idx();
 	}
 	const idx_t type_size = GetTypeIdSize(physical_type);
-	return type_size * row_count;
+	return optional_idx(type_size * row_count);
 }
 
 unique_ptr<FunctionData> InspectColumnBind(ClientContext &context, TableFunctionBindInput &input,
@@ -148,19 +150,19 @@ unique_ptr<FunctionData> InspectColumnBind(ClientContext &context, TableFunction
 	names.reserve(7);
 	return_types.reserve(7);
 	names.emplace_back("row_group_id");
-	return_types.emplace_back(LogicalType::BIGINT);
+	return_types.emplace_back(LogicalType {LogicalTypeId::BIGINT});
 	names.emplace_back("column_name");
-	return_types.emplace_back(LogicalType::VARCHAR);
+	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 	names.emplace_back("column_type");
-	return_types.emplace_back(LogicalType::VARCHAR);
+	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 	names.emplace_back("compression");
-	return_types.emplace_back(LogicalType::VARCHAR);
+	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 	names.emplace_back("compressed_size");
-	return_types.emplace_back(LogicalType::VARCHAR);
+	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 	names.emplace_back("estimated_decompressed_size");
-	return_types.emplace_back(LogicalType::VARCHAR);
+	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 	names.emplace_back("row_count");
-	return_types.emplace_back(LogicalType::BIGINT);
+	return_types.emplace_back(LogicalType {LogicalTypeId::BIGINT});
 
 	// Parse input parameters
 	const auto database_name = input.inputs[0].GetValue<string>();
@@ -226,9 +228,9 @@ void InspectColumnExecute(ClientContext &context, TableFunctionInput &data, Data
 		const idx_t total_compressed_size = entry.compressed_size + entry.additional_blocks_size;
 		output.SetValue(COMPRESSED_SIZE_IDX, count, Value(FormatSize(total_compressed_size)));
 
-		const idx_t estimated_size = CalculateEstimatedDecompressedSize(entry.column_type, entry.row_count);
-		if (estimated_size > 0) {
-			output.SetValue(ESTIMATED_DECOMPRESSED_SIZE_IDX, count, Value(FormatSize(estimated_size)));
+		const auto estimated_size = CalculateEstimatedDecompressedSize(entry.column_type, entry.row_count);
+		if (estimated_size.IsValid()) {
+			output.SetValue(ESTIMATED_DECOMPRESSED_SIZE_IDX, count, Value(FormatSize(estimated_size.GetIndex())));
 		} else {
 			output.SetValue(ESTIMATED_DECOMPRESSED_SIZE_IDX, count, Value("N/A"));
 		}
@@ -247,7 +249,7 @@ void InspectColumnExecute(ClientContext &context, TableFunctionInput &data, Data
 void RegisterInspectColumnFunction(ExtensionLoader &loader) {
 	// Register inspect_column(database_name, table_name, column_name) table function
 	TableFunction inspect_column_func("inspect_column",
-	                                  {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR},
+	                                  {LogicalType {LogicalTypeId::VARCHAR}, LogicalType {LogicalTypeId::VARCHAR}, LogicalType {LogicalTypeId::VARCHAR}},
 	                                  InspectColumnExecute, InspectColumnBind, InspectColumnInit);
 	loader.RegisterFunction(inspect_column_func);
 }
