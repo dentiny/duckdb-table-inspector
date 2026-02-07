@@ -87,6 +87,23 @@ SELECT DISTINCT column_name FROM inspect_column('testdb', 's1.t2', 'val');
 ----
 val
 
+# inspect_column(table_name, column_name) without database name
+query T
+SELECT DISTINCT column_name FROM inspect_column('t', 'id');
+----
+id
+
+query T
+SELECT DISTINCT column_type FROM inspect_column('t', 'name');
+----
+VARCHAR
+
+# inspect_column(table_name, column_name) with schema-qualified table name
+query T
+SELECT DISTINCT column_name FROM inspect_column('s1.t2', 'val');
+----
+val
+
 # Test column not found error
 statement error
 SELECT * FROM inspect_column('testdb', 't', 'nonexistent_column');

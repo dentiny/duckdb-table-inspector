@@ -141,8 +141,10 @@ optional_idx CalculateEstimatedDecompressedSize(const LogicalType &type, idx_t r
 	return optional_idx(type_size * row_count);
 }
 
-unique_ptr<FunctionData> InspectColumnBind(ClientContext &context, TableFunctionBindInput &input,
-                                           vector<LogicalType> &return_types, vector<string> &names) {
+// Shared bind logic for all inspect_column overloads
+unique_ptr<FunctionData> InspectColumnBindInternal(ClientContext &context, const string &database_name,
+                                                   const string &table_name_str, const string &column_name,
+                                                   vector<LogicalType> &return_types, vector<string> &names) {
 	D_ASSERT(names.empty());
 	D_ASSERT(return_types.empty());
 
@@ -164,16 +166,10 @@ unique_ptr<FunctionData> InspectColumnBind(ClientContext &context, TableFunction
 	names.emplace_back("row_count");
 	return_types.emplace_back(LogicalType {LogicalTypeId::BIGINT});
 
-	// Parse input parameters
-	const auto database_name = input.inputs[0].GetValue<string>();
-	const auto table_name_str = input.inputs[1].GetValue<string>();
-	const auto column_name = input.inputs[2].GetValue<string>();
-
 	// Parse table name (handles schema.table format)
 	auto qname = QualifiedName::Parse(table_name_str);
 	Binder::BindSchemaOrCatalog(context, qname.catalog, qname.schema);
 
-	// Use database_name parameter to get the catalog
 	auto &table_entry = Catalog::GetEntry<TableCatalogEntry>(context, database_name, qname.schema, qname.name);
 
 	// Find the target column
@@ -196,6 +192,23 @@ unique_ptr<FunctionData> InspectColumnBind(ClientContext &context, TableFunction
 	    FilterAndCalculateSegments(all_segments, target_column_id, column_name, column_type, block_alloc_size);
 
 	return std::move(result);
+}
+
+// inspect_column(database_name, table_name, column_name)
+unique_ptr<FunctionData> InspectColumnBindWithDatabase(ClientContext &context, TableFunctionBindInput &input,
+                                                       vector<LogicalType> &return_types, vector<string> &names) {
+	const auto database_name = input.inputs[0].GetValue<string>();
+	const auto table_name_str = input.inputs[1].GetValue<string>();
+	const auto column_name = input.inputs[2].GetValue<string>();
+	return InspectColumnBindInternal(context, database_name, table_name_str, column_name, return_types, names);
+}
+
+// inspect_column(table_name, column_name) — uses current database
+unique_ptr<FunctionData> InspectColumnBindCurrentDB(ClientContext &context, TableFunctionBindInput &input,
+                                                    vector<LogicalType> &return_types, vector<string> &names) {
+	const auto table_name_str = input.inputs[0].GetValue<string>();
+	const auto column_name = input.inputs[1].GetValue<string>();
+	return InspectColumnBindInternal(context, INVALID_CATALOG, table_name_str, column_name, return_types, names);
 }
 
 unique_ptr<GlobalTableFunctionState> InspectColumnInit(ClientContext &context, TableFunctionInitInput &input) {
@@ -247,11 +260,18 @@ void InspectColumnExecute(ClientContext &context, TableFunctionInput &data, Data
 } // namespace
 
 void RegisterInspectColumnFunction(ExtensionLoader &loader) {
-	// Register inspect_column(database_name, table_name, column_name) table function
-	TableFunction inspect_column_func("inspect_column",
-	                                  {LogicalType {LogicalTypeId::VARCHAR}, LogicalType {LogicalTypeId::VARCHAR}, LogicalType {LogicalTypeId::VARCHAR}},
-	                                  InspectColumnExecute, InspectColumnBind, InspectColumnInit);
-	loader.RegisterFunction(inspect_column_func);
+	// inspect_column(database_name, table_name, column_name)
+	TableFunction inspect_column_with_db("inspect_column",
+	                                     {LogicalType {LogicalTypeId::VARCHAR}, LogicalType {LogicalTypeId::VARCHAR},
+	                                      LogicalType {LogicalTypeId::VARCHAR}},
+	                                     InspectColumnExecute, InspectColumnBindWithDatabase, InspectColumnInit);
+	loader.RegisterFunction(inspect_column_with_db);
+
+	// inspect_column(table_name, column_name) — uses current database
+	TableFunction inspect_column_current_db(
+	    "inspect_column", {LogicalType {LogicalTypeId::VARCHAR}, LogicalType {LogicalTypeId::VARCHAR}},
+	    InspectColumnExecute, InspectColumnBindCurrentDB, InspectColumnInit);
+	loader.RegisterFunction(inspect_column_current_db);
 }
 
 } // namespace duckdb
