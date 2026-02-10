@@ -10,6 +10,25 @@ SELECT * FROM inspect_storage_summary();
 ----
 inspect_storage_summary() requires a persistent database file
 
+# Empty persistent database should work 
+statement ok
+ATTACH '__TEST_DIR__/test_inspect_storage_summary_empty.duckdb' AS emptydb;
+
+query I
+SELECT COUNT(*) FROM inspect_storage_summary('emptydb');
+----
+5
+
+query I
+SELECT block_count FROM inspect_storage_summary('emptydb') WHERE component = 'table_data';
+----
+0
+
+query I
+SELECT block_count FROM inspect_storage_summary('emptydb') WHERE component = 'index';
+----
+0
+
 # Create and use a persistent database file
 statement ok
 ATTACH '__TEST_DIR__/test_inspect_storage_summary.duckdb' AS testdb;

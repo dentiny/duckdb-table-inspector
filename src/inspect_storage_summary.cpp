@@ -153,7 +153,8 @@ unique_ptr<GlobalTableFunctionState> InspectStorageSummaryInit(ClientContext &co
 
 	// Index blocks = total - table_data - metadata - free_blocks
 	// TODO: count index blocks directly once IndexStorageInfo updates correctly after checkpoint.
-	const idx_t index_blocks = total_blocks - table_data_blocks - metadata_blocks - free_blocks;
+	const idx_t used_blocks = table_data_blocks + metadata_blocks + free_blocks;
+	const idx_t index_blocks = used_blocks <= total_blocks ? (total_blocks - used_blocks) : 0;
 
 	// Build entries
 	result->entries.reserve(5);
