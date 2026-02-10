@@ -103,7 +103,7 @@ void RegisterInspectStorageFunction(ExtensionLoader &loader) {
 	// Register inspect_storage() table function
 	TableFunction inspect_storage_func("inspect_storage", {}, InspectStorageExecute, InspectStorageBind,
 	                                   InspectStorageInit);
-	loader.RegisterFunction(inspect_storage_func);
+	loader.RegisterFunction(std::move(inspect_storage_func));
 }
 
 } // namespace duckdb

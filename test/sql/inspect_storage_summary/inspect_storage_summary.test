@@ -1,0 +1,80 @@
+# name: test/sql/inspect_storage_summary/inspect_storage_summary.test
+# description: test inspect_storage_summary function with persistent databases
+# group: [inspect_storage_summary]
+
+require table_inspector
+
+# In-memory database should throw error
+statement error
+SELECT * FROM inspect_storage_summary();
+----
+inspect_storage_summary() requires a persistent database file
+
+# Create and use a persistent database file
+statement ok
+ATTACH '__TEST_DIR__/test_inspect_storage_summary.duckdb' AS testdb;
+
+statement ok
+USE testdb;
+
+# Create a table with PRIMARY KEY to generate ART index
+statement ok
+CREATE TABLE t (id INTEGER PRIMARY KEY, name VARCHAR, amount DOUBLE);
+
+statement ok
+INSERT INTO t SELECT i, 'test_' || i::VARCHAR, i * 1.5 FROM range(100000) r(i);
+
+statement ok
+CHECKPOINT;
+
+# Should return exactly 5 rows (table_data, index, metadata, free_blocks, total)
+query I
+SELECT COUNT(*) FROM inspect_storage_summary();
+----
+5
+
+# Verify all component names are present
+query T
+SELECT component FROM inspect_storage_summary();
+----
+table_data
+index
+metadata
+free_blocks
+total
+
+# Total percentage should be 100.0%
+query T
+SELECT percentage FROM inspect_storage_summary() WHERE component = 'total';
+----
+100.0%
+
+
+# Table data should have at least 1 block
+query I
+SELECT block_count > 0 FROM inspect_storage_summary() WHERE component = 'table_data';
+----
+true
+
+# Index should have blocks (table has PRIMARY KEY)
+query I
+SELECT block_count > 0 FROM inspect_storage_summary() WHERE component = 'index';
+----
+true
+
+# Metadata should have at least 1 block
+query I
+SELECT block_count > 0 FROM inspect_storage_summary() WHERE component = 'metadata';
+----
+true
+
+# inspect_storage_summary(database_name) with explicit database name
+query I
+SELECT COUNT(*) FROM inspect_storage_summary('testdb');
+----
+5
+
+query T
+SELECT percentage FROM inspect_storage_summary('testdb') WHERE component = 'total';
+----
+100.0%

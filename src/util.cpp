@@ -1,6 +1,7 @@
 #include "util.hpp"
 
 #include "duckdb/common/array.hpp"
+#include "duckdb/common/string_util.hpp"
 
 namespace duckdb {
 
@@ -21,6 +22,14 @@ string FormatSize(idx_t bytes) {
 		snprintf(buffer.data(), buffer.size(), "%.1f %s", size, units[unit_idx]);
 	}
 	return string(buffer.data());
+}
+
+string FormatPercentage(idx_t blocks, idx_t total_blocks) {
+	if (total_blocks == 0) {
+		return "0.0%";
+	}
+	const double pct = static_cast<double>(blocks) * 100.0 / static_cast<double>(total_blocks);
+	return StringUtil::Format("%.1f%%", pct);
 }
 
 } // namespace duckdb

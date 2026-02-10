@@ -265,13 +265,13 @@ void RegisterInspectColumnFunction(ExtensionLoader &loader) {
 	                                     {LogicalType {LogicalTypeId::VARCHAR}, LogicalType {LogicalTypeId::VARCHAR},
 	                                      LogicalType {LogicalTypeId::VARCHAR}},
 	                                     InspectColumnExecute, InspectColumnBindWithDatabase, InspectColumnInit);
-	loader.RegisterFunction(inspect_column_with_db);
+	loader.RegisterFunction(std::move(inspect_column_with_db));
 
 	// inspect_column(table_name, column_name) — uses current database
 	TableFunction inspect_column_current_db(
 	    "inspect_column", {LogicalType {LogicalTypeId::VARCHAR}, LogicalType {LogicalTypeId::VARCHAR}},
 	    InspectColumnExecute, InspectColumnBindCurrentDB, InspectColumnInit);
-	loader.RegisterFunction(inspect_column_current_db);
+	loader.RegisterFunction(std::move(inspect_column_current_db));
 }
 
 } // namespace duckdb

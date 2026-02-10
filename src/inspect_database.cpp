@@ -177,7 +177,7 @@ void RegisterInspectDatabaseFunction(ExtensionLoader &loader) {
 	// Register inspect_database() table function
 	TableFunction inspect_database_func("inspect_database", {}, InspectDatabaseExecute, InspectDatabaseBind,
 	                                    InspectDatabaseInit);
-	loader.RegisterFunction(inspect_database_func);
+	loader.RegisterFunction(std::move(inspect_database_func));
 }
 
 } // namespace duckdb
