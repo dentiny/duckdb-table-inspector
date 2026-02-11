@@ -41,6 +41,13 @@ idx_t CalculateTableDataSize(const vector<ColumnSegmentInfo> &segment_info, Tabl
 // inspect_database() - List all tables with storage info
 //===--------------------------------------------------------------------===//
 
+struct InspectDatabaseBindData : public TableFunctionData {
+	explicit InspectDatabaseBindData(string database_name_p) : database_name(std::move(database_name_p)) {
+	}
+
+	string database_name;
+};
+
 struct InspectDatabaseData : public GlobalTableFunctionState {
 	InspectDatabaseData() : offset(0) {
 	}
@@ -56,8 +63,9 @@ struct InspectDatabaseData : public GlobalTableFunctionState {
 	idx_t offset;
 };
 
-unique_ptr<FunctionData> InspectDatabaseBind(ClientContext &context, TableFunctionBindInput &input,
-                                             vector<LogicalType> &return_types, vector<string> &names) {
+// Shared bind logic for all inspect_database overloads
+unique_ptr<FunctionData> InspectDatabaseBindInternal(ClientContext &context, const string &database_name,
+                                                     vector<LogicalType> &return_types, vector<string> &names) {
 	D_ASSERT(names.empty());
 	D_ASSERT(return_types.empty());
 
@@ -73,14 +81,28 @@ unique_ptr<FunctionData> InspectDatabaseBind(ClientContext &context, TableFuncti
 	names.emplace_back("persisted_data_size");
 	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 
-	return nullptr;
+	return make_uniq<InspectDatabaseBindData>(database_name);
+}
+
+// inspect_database(database_name)
+unique_ptr<FunctionData> InspectDatabaseBindWithDatabase(ClientContext &context, TableFunctionBindInput &input,
+                                                         vector<LogicalType> &return_types, vector<string> &names) {
+	const auto database_name = input.inputs[0].GetValue<string>();
+	return InspectDatabaseBindInternal(context, database_name, return_types, names);
+}
+
+// inspect_database() — uses current database
+unique_ptr<FunctionData> InspectDatabaseBindCurrentDB(ClientContext &context, TableFunctionBindInput &input,
+                                                      vector<LogicalType> &return_types, vector<string> &names) {
+	// INVALID_CATALOG retrieves the currently active catalog
+	return InspectDatabaseBindInternal(context, INVALID_CATALOG, return_types, names);
 }
 
 unique_ptr<GlobalTableFunctionState> InspectDatabaseInit(ClientContext &context, TableFunctionInitInput &input) {
 	auto result = make_uniq<InspectDatabaseData>();
 
-	// INVALID_CATALOG retrieves the currently active catalog
-	auto &catalog = Catalog::GetCatalog(context, INVALID_CATALOG);
+	const auto &bind_data = input.bind_data->Cast<InspectDatabaseBindData>();
+	auto &catalog = Catalog::GetCatalog(context, bind_data.database_name);
 
 	// Check if database is persistent
 	// inspect_database() requires a persistent database file because it measures
@@ -94,8 +116,7 @@ unique_ptr<GlobalTableFunctionState> InspectDatabaseInit(ClientContext &context,
 		                            "     D SELECT * FROM inspect_database();\n\n"
 		                            "  2. Or attach a database file:\n"
 		                            "     D ATTACH 'mydata.duckdb' AS mydb;\n"
-		                            "     D USE mydb;\n"
-		                            "     D SELECT * FROM inspect_database();\n\n");
+		                            "     D SELECT * FROM inspect_database('mydb');\n\n");
 	}
 
 	auto schemas = catalog.GetSchemas(context);
@@ -157,10 +178,16 @@ void InspectDatabaseExecute(ClientContext &context, TableFunctionInput &data, Da
 } // namespace
 
 void RegisterInspectDatabaseFunction(ExtensionLoader &loader) {
-	// Register inspect_database() table function
-	TableFunction inspect_database_func("inspect_database", {}, InspectDatabaseExecute, InspectDatabaseBind,
-	                                    InspectDatabaseInit);
-	loader.RegisterFunction(std::move(inspect_database_func));
+	// inspect_database(database_name)
+	TableFunction inspect_database_with_db("inspect_database", {LogicalType {LogicalTypeId::VARCHAR}},
+	                                       InspectDatabaseExecute, InspectDatabaseBindWithDatabase,
+	                                       InspectDatabaseInit);
+	loader.RegisterFunction(std::move(inspect_database_with_db));
+
+	// inspect_database() — uses current database
+	TableFunction inspect_database_current_db("inspect_database", {}, InspectDatabaseExecute,
+	                                          InspectDatabaseBindCurrentDB, InspectDatabaseInit);
+	loader.RegisterFunction(std::move(inspect_database_current_db));
 }
 
 } // namespace duckdb

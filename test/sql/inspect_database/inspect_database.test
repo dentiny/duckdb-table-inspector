@@ -64,6 +64,17 @@ SELECT DISTINCT database_name FROM inspect_database();
 ----
 testdb
 
+# inspect_database(database_name) with explicit database name
+query I
+SELECT COUNT(*) FROM inspect_database('testdb');
+----
+3
+
+query T
+SELECT DISTINCT database_name FROM inspect_database('testdb');
+----
+testdb
+
 # Cleanup
 statement ok
 USE memory;
