@@ -4,6 +4,6 @@ namespace duckdb {
 
 class ExtensionLoader;
 
-void RegisterInspectStorageSummaryFunction(ExtensionLoader &loader);
+void RegisterInspectBlockUsageFunction(ExtensionLoader &loader);
 
 } // namespace duckdb

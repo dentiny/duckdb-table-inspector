@@ -5,7 +5,7 @@
 #include "inspect_column.hpp"
 #include "inspect_database.hpp"
 #include "inspect_storage.hpp"
-#include "inspect_storage_summary.hpp"
+#include "inspect_block_usage.hpp"
 
 #include "duckdb/main/extension/extension_loader.hpp"
 
@@ -15,7 +15,7 @@ static void LoadInternal(ExtensionLoader &loader) {
 	RegisterInspectColumnFunction(loader);
 	RegisterInspectDatabaseFunction(loader);
 	RegisterInspectStorageFunction(loader);
-	RegisterInspectStorageSummaryFunction(loader);
+	RegisterInspectBlockUsageFunction(loader);
 }
 
 void TableInspectorExtension::Load(ExtensionLoader &loader) {
