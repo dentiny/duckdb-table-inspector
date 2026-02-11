@@ -6,7 +6,6 @@
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/catalog/default/default_schemas.hpp"
 #include "duckdb/common/assert.hpp"
-#include "duckdb/common/unordered_set.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/storage/database_size.hpp"
@@ -45,9 +44,9 @@ struct InspectStorageSummaryState : public GlobalTableFunctionState {
 	idx_t offset;
 };
 
-// Collect all unique block IDs used by table data across all tables
-idx_t CollectTableDataBlocks(ClientContext &context, Catalog &catalog) {
-	unordered_set<block_id_t> unique_blocks;
+// Count unique block IDs used by table data across all tables
+idx_t CountTableDataBlocks(ClientContext &context, Catalog &catalog) {
+	idx_t total = 0;
 
 	auto schemas = catalog.GetSchemas(context);
 	for (auto &schema_ref : schemas) {
@@ -61,20 +60,11 @@ idx_t CollectTableDataBlocks(ClientContext &context, Catalog &catalog) {
 		schema.Scan(context, CatalogType::TABLE_ENTRY, [&](CatalogEntry &entry) {
 			auto &table = entry.Cast<TableCatalogEntry>();
 			const auto segment_info = table.GetColumnSegmentInfo();
-
-			for (const auto &seg : segment_info) {
-				if (seg.persistent && seg.block_id != INVALID_BLOCK) {
-					unique_blocks.insert(seg.block_id);
-					for (const auto &block_id : seg.additional_blocks) {
-						D_ASSERT(block_id != INVALID_BLOCK);
-						unique_blocks.insert(block_id);
-					}
-				}
-			}
+			total += CountUniqueBlocks(segment_info);
 		});
 	}
 
-	return unique_blocks.size();
+	return total;
 }
 
 // Count physical metadata blocks
@@ -149,12 +139,13 @@ unique_ptr<GlobalTableFunctionState> InspectStorageSummaryInit(ClientContext &co
 	const idx_t metadata_blocks = CountMetadataBlocks(metadata_info);
 
 	// Count table data blocks (unique block IDs across all tables)
-	const idx_t table_data_blocks = CollectTableDataBlocks(context, catalog);
+	const idx_t table_data_blocks = CountTableDataBlocks(context, catalog);
 
 	// Index blocks = total - table_data - metadata - free_blocks
 	// TODO: count index blocks directly once IndexStorageInfo updates correctly after checkpoint.
 	const idx_t used_blocks = table_data_blocks + metadata_blocks + free_blocks;
-	const idx_t index_blocks = used_blocks <= total_blocks ? (total_blocks - used_blocks) : 0;
+	D_ASSERT(used_blocks <= total_blocks);
+	const idx_t index_blocks = total_blocks - used_blocks;
 
 	// Build entries
 	result->entries.reserve(5);

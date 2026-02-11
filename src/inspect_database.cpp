@@ -7,7 +7,6 @@
 #include "duckdb/catalog/default/default_schemas.hpp"
 #include "duckdb/common/assert.hpp"
 #include "duckdb/common/exception.hpp"
-#include "duckdb/common/unordered_set.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/main/attached_database.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
@@ -33,25 +32,9 @@ idx_t CalculateTableDataSize(const vector<ColumnSegmentInfo> &segment_info, Tabl
 		return 0;
 	}
 
-	// Collect unique block IDs from all segments
-	unordered_set<block_id_t> unique_blocks;
-
-	for (const auto &seg : segment_info) {
-		// Only count persistent segments on real blocks (skip constant segments)
-		if (seg.persistent && seg.block_id != INVALID_BLOCK) {
-			unique_blocks.insert(seg.block_id);
-			// Additional blocks are full blocks
-			for (const auto &block_id : seg.additional_blocks) {
-				D_ASSERT(block_id != INVALID_BLOCK);
-				unique_blocks.insert(block_id);
-			}
-		}
-	}
-
-	// Get actual block allocation size from storage manager
 	auto &storage_manager = table.ParentCatalog().GetAttached().GetStorageManager();
 	const idx_t block_alloc_size = storage_manager.GetBlockManager().GetBlockAllocSize();
-	return unique_blocks.size() * block_alloc_size;
+	return CountUniqueBlocks(segment_info) * block_alloc_size;
 }
 
 //===--------------------------------------------------------------------===//
