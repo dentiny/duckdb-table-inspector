@@ -1,0 +1,99 @@
+# name: test/sql/inspect_block_usage/inspect_block_usage.test
+# description: test inspect_block_usage function with persistent databases
+# group: [inspect_block_usage]
+
+require table_inspector
+
+# In-memory database should throw error
+statement error
+SELECT * FROM inspect_block_usage();
+----
+inspect_block_usage() requires a persistent database file
+
+# Empty persistent database should work 
+statement ok
+ATTACH '__TEST_DIR__/test_inspect_block_usage_empty.duckdb' AS emptydb;
+
+query I
+SELECT COUNT(*) FROM inspect_block_usage('emptydb');
+----
+5
+
+query I
+SELECT block_count FROM inspect_block_usage('emptydb') WHERE component = 'table_data';
+----
+0
+
+query I
+SELECT block_count FROM inspect_block_usage('emptydb') WHERE component = 'index';
+----
+0
+
+# Create and use a persistent database file
+statement ok
+ATTACH '__TEST_DIR__/test_inspect_block_usage.duckdb' AS testdb;
+
+statement ok
+USE testdb;
+
+# Create a table with PRIMARY KEY to generate ART index
+statement ok
+CREATE TABLE t (id INTEGER PRIMARY KEY, name VARCHAR, amount DOUBLE);
+
+statement ok
+INSERT INTO t SELECT i, 'test_' || i::VARCHAR, i * 1.5 FROM range(100000) r(i);
+
+statement ok
+CHECKPOINT;
+
+# Should return exactly 5 rows (table_data, index, metadata, free_blocks, total)
+query I
+SELECT COUNT(*) FROM inspect_block_usage();
+----
+5
+
+# Verify all component names are present
+query T
+SELECT component FROM inspect_block_usage();
+----
+table_data
+index
+metadata
+free_blocks
+total
+
+# Total percentage should be 100.0%
+query T
+SELECT percentage FROM inspect_block_usage() WHERE component = 'total';
+----
+100.0%
+
+
+# Table data should have at least 1 block
+query I
+SELECT block_count > 0 FROM inspect_block_usage() WHERE component = 'table_data';
+----
+true
+
+# Index should have blocks (table has PRIMARY KEY)
+query I
+SELECT block_count > 0 FROM inspect_block_usage() WHERE component = 'index';
+----
+true
+
+# Metadata should have at least 1 block
+query I
+SELECT block_count > 0 FROM inspect_block_usage() WHERE component = 'metadata';
+----
+true
+
+# inspect_block_usage(database_name) with explicit database name
+query I
+SELECT COUNT(*) FROM inspect_block_usage('testdb');
+----
+5
+
+query T
+SELECT percentage FROM inspect_block_usage('testdb') WHERE component = 'total';
+----
+100.0%

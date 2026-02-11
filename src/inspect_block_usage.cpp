@@ -1,4 +1,4 @@
-#include "inspect_storage_summary.hpp"
+#include "inspect_block_usage.hpp"
 #include "util.hpp"
 
 #include "duckdb/catalog/catalog.hpp"
@@ -16,31 +16,31 @@ namespace duckdb {
 namespace {
 
 //===--------------------------------------------------------------------===//
-// inspect_storage_summary() - File-level storage breakdown
+// inspect_block_usage() - File-level storage breakdown
 //===--------------------------------------------------------------------===//
 
 // Breaks down a .duckdb file into 4 non-overlapping components:
 // table_data, index, metadata, free_blocks.
 
-struct StorageSummaryEntry {
+struct BlockUsageEntry {
 	string component;
 	idx_t block_count;
 	idx_t size_bytes;
 	string percentage;
 };
 
-struct InspectStorageSummaryBindData : public TableFunctionData {
-	explicit InspectStorageSummaryBindData(string database_name_p) : database_name(std::move(database_name_p)) {
+struct InspectBlockUsageBindData : public TableFunctionData {
+	explicit InspectBlockUsageBindData(string database_name_p) : database_name(std::move(database_name_p)) {
 	}
 
 	string database_name;
 };
 
-struct InspectStorageSummaryState : public GlobalTableFunctionState {
-	InspectStorageSummaryState() : offset(0) {
+struct InspectBlockUsageState : public GlobalTableFunctionState {
+	InspectBlockUsageState() : offset(0) {
 	}
 
-	vector<StorageSummaryEntry> entries;
+	vector<BlockUsageEntry> entries;
 	idx_t offset;
 };
 
@@ -73,9 +73,9 @@ idx_t CountMetadataBlocks(const vector<MetadataBlockInfo> &metadata_info) {
 	return metadata_info.size();
 }
 
-// Shared bind logic for all inspect_storage_summary overloads
-unique_ptr<FunctionData> InspectStorageSummaryBindInternal(ClientContext &context, const string &database_name,
-                                                           vector<LogicalType> &return_types, vector<string> &names) {
+// Shared bind logic for all inspect_block_usage overloads
+unique_ptr<FunctionData> InspectBlockUsageBindInternal(ClientContext &context, const string &database_name,
+                                                       vector<LogicalType> &return_types, vector<string> &names) {
 	D_ASSERT(names.empty());
 	D_ASSERT(return_types.empty());
 
@@ -91,41 +91,40 @@ unique_ptr<FunctionData> InspectStorageSummaryBindInternal(ClientContext &contex
 	names.emplace_back("block_count");
 	return_types.emplace_back(LogicalType {LogicalTypeId::BIGINT});
 
-	return make_uniq<InspectStorageSummaryBindData>(database_name);
+	return make_uniq<InspectBlockUsageBindData>(database_name);
 }
 
-// inspect_storage_summary(database_name)
-unique_ptr<FunctionData> InspectStorageSummaryBindWithDatabase(ClientContext &context, TableFunctionBindInput &input,
-                                                               vector<LogicalType> &return_types,
-                                                               vector<string> &names) {
+// inspect_block_usage(database_name)
+unique_ptr<FunctionData> InspectBlockUsageBindWithDatabase(ClientContext &context, TableFunctionBindInput &input,
+                                                           vector<LogicalType> &return_types, vector<string> &names) {
 	const auto database_name = input.inputs[0].GetValue<string>();
-	return InspectStorageSummaryBindInternal(context, database_name, return_types, names);
+	return InspectBlockUsageBindInternal(context, database_name, return_types, names);
 }
 
-// inspect_storage_summary() — uses current database
-unique_ptr<FunctionData> InspectStorageSummaryBindCurrentDB(ClientContext &context, TableFunctionBindInput &input,
-                                                            vector<LogicalType> &return_types, vector<string> &names) {
-	return InspectStorageSummaryBindInternal(context, INVALID_CATALOG, return_types, names);
+// inspect_block_usage() — uses current database
+unique_ptr<FunctionData> InspectBlockUsageBindCurrentDB(ClientContext &context, TableFunctionBindInput &input,
+                                                        vector<LogicalType> &return_types, vector<string> &names) {
+	return InspectBlockUsageBindInternal(context, INVALID_CATALOG, return_types, names);
 }
 
-unique_ptr<GlobalTableFunctionState> InspectStorageSummaryInit(ClientContext &context, TableFunctionInitInput &input) {
-	auto result = make_uniq<InspectStorageSummaryState>();
+unique_ptr<GlobalTableFunctionState> InspectBlockUsageInit(ClientContext &context, TableFunctionInitInput &input) {
+	auto result = make_uniq<InspectBlockUsageState>();
 
-	auto &bind_data = input.bind_data->Cast<InspectStorageSummaryBindData>();
+	auto &bind_data = input.bind_data->Cast<InspectBlockUsageBindData>();
 	auto &catalog = Catalog::GetCatalog(context, bind_data.database_name);
 
 	// Require persistent database
 	if (catalog.InMemory()) {
 		throw InvalidInputException(
-		    "inspect_storage_summary() requires a persistent database file.\n"
+		    "inspect_block_usage() requires a persistent database file.\n"
 		    "This tool is designed to analyze the storage breakdown of existing .duckdb files.\n\n"
 		    "Correct usage:\n"
 		    "  1. Open a database file directly:\n"
 		    "     $ duckdb mydata.duckdb\n"
-		    "     D SELECT * FROM inspect_storage_summary();\n\n"
+		    "     D SELECT * FROM inspect_block_usage();\n\n"
 		    "  2. Or attach a database file:\n"
 		    "     D ATTACH 'mydata.duckdb' AS mydb;\n"
-		    "     D SELECT * FROM inspect_storage_summary('mydb');\n\n");
+		    "     D SELECT * FROM inspect_block_usage('mydb');\n\n");
 	}
 
 	// Get database size info
@@ -150,35 +149,35 @@ unique_ptr<GlobalTableFunctionState> InspectStorageSummaryInit(ClientContext &co
 	// Build entries
 	result->entries.reserve(5);
 
-	StorageSummaryEntry table_data_entry;
+	BlockUsageEntry table_data_entry;
 	table_data_entry.component = "table_data";
 	table_data_entry.block_count = table_data_blocks;
 	table_data_entry.size_bytes = table_data_blocks * block_alloc_size;
 	table_data_entry.percentage = FormatPercentage(table_data_blocks, total_blocks);
 	result->entries.push_back(std::move(table_data_entry));
 
-	StorageSummaryEntry index_entry;
+	BlockUsageEntry index_entry;
 	index_entry.component = "index";
 	index_entry.block_count = index_blocks;
 	index_entry.size_bytes = index_blocks * block_alloc_size;
 	index_entry.percentage = FormatPercentage(index_blocks, total_blocks);
 	result->entries.push_back(std::move(index_entry));
 
-	StorageSummaryEntry metadata_entry;
+	BlockUsageEntry metadata_entry;
 	metadata_entry.component = "metadata";
 	metadata_entry.block_count = metadata_blocks;
 	metadata_entry.size_bytes = metadata_blocks * block_alloc_size;
 	metadata_entry.percentage = FormatPercentage(metadata_blocks, total_blocks);
 	result->entries.push_back(std::move(metadata_entry));
 
-	StorageSummaryEntry free_blocks_entry;
+	BlockUsageEntry free_blocks_entry;
 	free_blocks_entry.component = "free_blocks";
 	free_blocks_entry.block_count = free_blocks;
 	free_blocks_entry.size_bytes = free_blocks * block_alloc_size;
 	free_blocks_entry.percentage = FormatPercentage(free_blocks, total_blocks);
 	result->entries.push_back(std::move(free_blocks_entry));
 
-	StorageSummaryEntry total_entry;
+	BlockUsageEntry total_entry;
 	total_entry.component = "total";
 	total_entry.block_count = total_blocks;
 	total_entry.size_bytes = total_blocks * block_alloc_size;
@@ -188,8 +187,8 @@ unique_ptr<GlobalTableFunctionState> InspectStorageSummaryInit(ClientContext &co
 	return std::move(result);
 }
 
-void InspectStorageSummaryExecute(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
-	auto &state = data.global_state->Cast<InspectStorageSummaryState>();
+void InspectBlockUsageExecute(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
+	auto &state = data.global_state->Cast<InspectBlockUsageState>();
 
 	idx_t count = 0;
 
@@ -215,17 +214,17 @@ void InspectStorageSummaryExecute(ClientContext &context, TableFunctionInput &da
 
 } // namespace
 
-void RegisterInspectStorageSummaryFunction(ExtensionLoader &loader) {
-	// inspect_storage_summary(database_name)
-	TableFunction inspect_storage_summary_with_db("inspect_storage_summary", {LogicalType {LogicalTypeId::VARCHAR}},
-	                                              InspectStorageSummaryExecute, InspectStorageSummaryBindWithDatabase,
-	                                              InspectStorageSummaryInit);
-	loader.RegisterFunction(std::move(inspect_storage_summary_with_db));
+void RegisterInspectBlockUsageFunction(ExtensionLoader &loader) {
+	// inspect_block_usage(database_name)
+	TableFunction inspect_block_usage_with_db("inspect_block_usage", {LogicalType {LogicalTypeId::VARCHAR}},
+	                                          InspectBlockUsageExecute, InspectBlockUsageBindWithDatabase,
+	                                          InspectBlockUsageInit);
+	loader.RegisterFunction(std::move(inspect_block_usage_with_db));
 
-	// inspect_storage_summary() — uses current database
-	TableFunction inspect_storage_summary_current_db("inspect_storage_summary", {}, InspectStorageSummaryExecute,
-	                                                 InspectStorageSummaryBindCurrentDB, InspectStorageSummaryInit);
-	loader.RegisterFunction(std::move(inspect_storage_summary_current_db));
+	// inspect_block_usage() — uses current database
+	TableFunction inspect_block_usage_current_db("inspect_block_usage", {}, InspectBlockUsageExecute,
+	                                             InspectBlockUsageBindCurrentDB, InspectBlockUsageInit);
+	loader.RegisterFunction(std::move(inspect_block_usage_current_db));
 }
 
 } // namespace duckdb
