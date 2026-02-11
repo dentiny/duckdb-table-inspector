@@ -25,6 +25,12 @@ SELECT * FROM inspect_database();
 ----
 inspect_database() requires a persistent database file
 
+# Explicit database name with in-memory database should also fail
+statement error
+SELECT * FROM inspect_database('memdb');
+----
+inspect_database() requires a persistent database file
+
 # Cleanup
 statement ok
 USE memory;
