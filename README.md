@@ -135,7 +135,7 @@ SELECT
     i AS event_id,
     (random() * 10000)::INTEGER AS user_id,
     'session_' || (random() * 5000)::INTEGER AS session_id,
-    (ARRAY['click', 'view', 'purchase', 'signup', 'logout'])[1 + (random() * 4)::INTEGER] AS event_type,
+    (ARRAY['click', 'view', 'purchase', 'signup', 'logout'])[1 + (random() * 5)::INTEGER] AS event_type,
     'data_' || (random() * 1000)::INTEGER AS event_data,
     '2024-01-01 00:00:00'::TIMESTAMP + INTERVAL (i) SECOND AS timestamp,
     random() * 1000 AS value
