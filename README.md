@@ -18,6 +18,8 @@ LOAD table_inspector;
 | [`inspect_storage()`](#inspect_storage) | List all attached persistent databases with file sizes |
 | [`inspect_block_usage()`](#inspect_block_usage) | High-level storage breakdown (table data vs index vs metadata vs free blocks) |
 
+> **Note:** Most functions require a persistent database file and do not work with in-memory databases. All functions report on checkpointed data -- run `CHECKPOINT` before inspecting to ensure the latest state is reflected.
+
 ## Usage
 
 ### `inspect_database()`
@@ -38,8 +40,6 @@ SELECT * FROM inspect_database('mydb');
 | `schema_name` | VARCHAR | Schema name |
 | `table_name` | VARCHAR | Table name |
 | `persisted_data_size` | VARCHAR | Formatted size (e.g., "1.2 MiB") |
-
-> **Note:** Requires a persistent database file. Does not work with in-memory databases.
 
 ### `inspect_column()`
 
@@ -80,8 +80,6 @@ SELECT * FROM inspect_storage();
 | `database_file_size` | VARCHAR | Size of the `.duckdb` file |
 | `wal_file_size` | VARCHAR | Size of the WAL file |
 
-> **Note:** System, temporary, and in-memory databases are excluded.
-
 ### `inspect_block_usage()`
 
 High-level storage breakdown by component type.
@@ -110,8 +108,6 @@ SELECT * FROM inspect_block_usage('mydb');
 | `metadata` | Catalog, statistics, schema definitions |
 | `free_blocks` | Blocks from deleted rows -- reusable but file won't shrink |
 | `total` | Sum of all components (always 100.0%) |
-
-> **Note:** Requires a persistent database file. Does not work with in-memory databases.
 
 ## Example
 
@@ -195,8 +191,6 @@ SELECT * FROM inspect_block_usage();
 │ total       │ 7.2 MiB   │ 100.0%     │          29 │
 └─────────────┴───────────┴────────────┴─────────────┘
 ```
-
-> **Note:** All functions report on checkpointed data. Run `CHECKPOINT` before inspecting to ensure the latest state is reflected.
 
 ## Roadmap
 
