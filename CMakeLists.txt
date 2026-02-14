@@ -15,9 +15,11 @@ set(EXTENSION_SOURCES
     src/inspect_column.cpp src/inspect_database.cpp src/inspect_storage.cpp
     src/inspect_block_usage.cpp src/table_inspector_extension.cpp src/util.cpp)
 
-set(CMAKE_CXX_FLAGS
-    "${CMAKE_CXX_FLAGS} -Wunused-variable -Wunused-function -Wunused-but-set-variable"
-)
+if(NOT MSVC)
+  set(CMAKE_CXX_FLAGS
+      "${CMAKE_CXX_FLAGS} -Wunused-variable -Wunused-function -Wunused-but-set-variable"
+  )
+endif()
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
