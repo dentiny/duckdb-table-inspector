@@ -170,7 +170,8 @@ unique_ptr<FunctionData> InspectColumnBindInternal(ClientContext &context, const
 	auto qname = QualifiedName::Parse(table_name_str);
 	Binder::BindSchemaOrCatalog(context, qname.catalog, qname.schema);
 
-	auto &table_entry = Catalog::GetEntry<TableCatalogEntry>(context, database_name, qname.schema, qname.name);
+	auto &catalog_entry = Catalog::GetEntry(context, CatalogType::TABLE_ENTRY, database_name, qname.schema, qname.name);
+	auto &table_entry = catalog_entry.Cast<TableCatalogEntry>();
 
 	// Find the target column
 	auto &columns = table_entry.GetColumns();
@@ -187,7 +188,8 @@ unique_ptr<FunctionData> InspectColumnBindInternal(ClientContext &context, const
 	auto &storage_manager = table_entry.ParentCatalog().GetAttached().GetStorageManager();
 	const idx_t block_alloc_size = storage_manager.GetBlockManager().GetBlockAllocSize();
 
-	const auto all_segments = table_entry.GetColumnSegmentInfo();
+	QueryContext query_context {context};
+	const auto all_segments = table_entry.GetColumnSegmentInfo(query_context);
 	result->filtered_segments =
 	    FilterAndCalculateSegments(all_segments, target_column_id, column_name, column_type, block_alloc_size);
 

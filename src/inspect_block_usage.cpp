@@ -59,7 +59,8 @@ idx_t CountTableDataBlocks(ClientContext &context, Catalog &catalog) {
 
 		schema.Scan(context, CatalogType::TABLE_ENTRY, [&](CatalogEntry &entry) {
 			auto &table = entry.Cast<TableCatalogEntry>();
-			const auto segment_info = table.GetColumnSegmentInfo();
+			QueryContext query_context {context};
+			const auto segment_info = table.GetColumnSegmentInfo(query_context);
 			total += CountUniqueBlocks(segment_info);
 		});
 	}
