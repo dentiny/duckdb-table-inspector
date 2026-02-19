@@ -2,12 +2,11 @@
 
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/common/assert.hpp"
-#include "duckdb/common/string_util.hpp"
 #include "duckdb/common/vector.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/main/attached_database.hpp"
-#include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/main/database_manager.hpp"
+#include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/storage/database_size.hpp"
 
 namespace duckdb {
@@ -45,10 +44,10 @@ unique_ptr<FunctionData> InspectStorageBind(ClientContext &context, TableFunctio
 	return_types.reserve(3);
 	names.emplace_back("database_name");
 	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
-	names.emplace_back("database_file_size");
-	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
-	names.emplace_back("wal_file_size");
-	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
+	names.emplace_back("database_file_bytes");
+	return_types.emplace_back(LogicalType {LogicalTypeId::BIGINT});
+	names.emplace_back("wal_file_bytes");
+	return_types.emplace_back(LogicalType {LogicalTypeId::BIGINT});
 
 	return nullptr;
 }
@@ -80,17 +79,16 @@ void InspectStorageExecute(ClientContext &context, TableFunctionInput &data, Dat
 	idx_t count = 0;
 
 	constexpr idx_t DATABASE_NAME_IDX = 0;
-	constexpr idx_t DATABASE_FILE_SIZE_IDX = 1;
-	constexpr idx_t WAL_FILE_SIZE_IDX = 2;
+	constexpr idx_t DATABASE_FILE_BYTES_IDX = 1;
+	constexpr idx_t WAL_FILE_BYTES_IDX = 2;
 
 	while (state.offset < state.entries.size() && count < STANDARD_VECTOR_SIZE) {
 		auto &entry = state.entries[state.offset];
 
 		output.SetValue(DATABASE_NAME_IDX, count, Value(entry.database_name));
-		output.SetValue(DATABASE_FILE_SIZE_IDX, count,
-		                Value(StringUtil::BytesToHumanReadableString(entry.database_file_size_bytes)));
-		output.SetValue(WAL_FILE_SIZE_IDX, count,
-		                Value(StringUtil::BytesToHumanReadableString(entry.wal_file_size_bytes)));
+		output.SetValue(DATABASE_FILE_BYTES_IDX, count,
+		                Value::BIGINT(NumericCast<int64_t>(entry.database_file_size_bytes)));
+		output.SetValue(WAL_FILE_BYTES_IDX, count, Value::BIGINT(NumericCast<int64_t>(entry.wal_file_size_bytes)));
 
 		state.offset++;
 		count++;

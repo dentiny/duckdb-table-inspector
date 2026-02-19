@@ -47,23 +47,23 @@ SELECT DISTINCT column_name FROM inspect_column('testdb', 't', 'name');
 ----
 name
 
-# VARCHAR should show N/A for estimated_decompressed_size
-query T
-SELECT DISTINCT estimated_decompressed_size FROM inspect_column('testdb', 't', 'name');
-----
-N/A
-
-# INTEGER should show actual size for estimated_decompressed_size (not N/A)
+# VARCHAR should show NULL for estimated_decompressed_bytes (variable-length type)
 query I
-SELECT COUNT(*) FROM inspect_column('testdb', 't', 'id') WHERE estimated_decompressed_size != 'N/A';
+SELECT COUNT(*) = count_if(estimated_decompressed_bytes IS NULL) FROM inspect_column('testdb', 't', 'name');
 ----
-2
+true
+
+# INTEGER should show actual size for estimated_decompressed_bytes (fixed-size type)
+query I
+SELECT count_if(estimated_decompressed_bytes > 0) > 0 FROM inspect_column('testdb', 't', 'id');
+----
+true
 
 # Verify all expected columns are present and at least one segment exists
 query I
 SELECT COUNT(*) > 0 FROM (
     SELECT row_group_id, column_name, column_type, compression,
-           compressed_size, estimated_decompressed_size, row_count
+           compressed_bytes, estimated_decompressed_bytes, row_count
     FROM inspect_column('testdb', 't', 'amount')
 );
 ----
@@ -122,6 +122,6 @@ CHECKPOINT;
 
 # Large segment should have size > 1 MiB (spans multiple blocks)
 query I
-SELECT COUNT(*) FROM inspect_column('testdb', 't_large', 'big_text') WHERE compressed_size LIKE '%MiB%';
+SELECT COUNT(*) FROM inspect_column('testdb', 't_large', 'big_text') WHERE compressed_bytes > 1048576;
 ----
 1

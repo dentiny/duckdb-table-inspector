@@ -4,9 +4,9 @@
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/common/algorithm.hpp"
 #include "duckdb/common/assert.hpp"
+#include "duckdb/common/exception.hpp"
 #include "duckdb/common/optional_idx.hpp"
 #include "duckdb/common/string_util.hpp"
-#include "duckdb/common/exception.hpp"
 #include "duckdb/common/types.hpp"
 #include "duckdb/common/unordered_map.hpp"
 #include "duckdb/function/table_function.hpp"
@@ -130,7 +130,7 @@ vector<FilteredSegmentEntry> FilterAndCalculateSegments(const vector<ColumnSegme
 
 // Calculate estimated decompressed size
 // For fixed-size types: type_size * row_count
-// For variable-length types: returns invalid optional_idx (will display as "N/A")
+// For variable-length types: returns invalid optional_idx (will be NULL)
 optional_idx CalculateEstimatedDecompressedSize(const LogicalType &type, idx_t row_count) {
 	const PhysicalType physical_type = type.InternalType();
 	if (!TypeIsConstantSize(physical_type)) {
@@ -158,10 +158,10 @@ unique_ptr<FunctionData> InspectColumnBindInternal(ClientContext &context, const
 	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 	names.emplace_back("compression");
 	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
-	names.emplace_back("compressed_size");
-	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
-	names.emplace_back("estimated_decompressed_size");
-	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
+	names.emplace_back("compressed_bytes");
+	return_types.emplace_back(LogicalType {LogicalTypeId::BIGINT});
+	names.emplace_back("estimated_decompressed_bytes");
+	return_types.emplace_back(LogicalType {LogicalTypeId::BIGINT});
 	names.emplace_back("row_count");
 	return_types.emplace_back(LogicalType {LogicalTypeId::BIGINT});
 
@@ -226,8 +226,8 @@ void InspectColumnExecute(ClientContext &context, TableFunctionInput &data, Data
 	constexpr idx_t COLUMN_NAME_IDX = 1;
 	constexpr idx_t COLUMN_TYPE_IDX = 2;
 	constexpr idx_t COMPRESSION_IDX = 3;
-	constexpr idx_t COMPRESSED_SIZE_IDX = 4;
-	constexpr idx_t ESTIMATED_DECOMPRESSED_SIZE_IDX = 5;
+	constexpr idx_t COMPRESSED_BYTES_IDX = 4;
+	constexpr idx_t ESTIMATED_DECOMPRESSED_BYTES_IDX = 5;
 	constexpr idx_t ROW_COUNT_IDX = 6;
 
 	while (state.offset < bind_data.filtered_segments.size() && count < STANDARD_VECTOR_SIZE) {
@@ -240,15 +240,14 @@ void InspectColumnExecute(ClientContext &context, TableFunctionInput &data, Data
 
 		// Total compressed size = main block portion + additional blocks
 		const idx_t total_compressed_size = entry.compressed_size + entry.additional_blocks_size;
-		output.SetValue(COMPRESSED_SIZE_IDX, count,
-		                Value(StringUtil::BytesToHumanReadableString(total_compressed_size)));
+		output.SetValue(COMPRESSED_BYTES_IDX, count, Value::BIGINT(NumericCast<int64_t>(total_compressed_size)));
 
 		const auto estimated_size = CalculateEstimatedDecompressedSize(entry.column_type, entry.row_count);
 		if (estimated_size.IsValid()) {
-			output.SetValue(ESTIMATED_DECOMPRESSED_SIZE_IDX, count,
-			                Value(StringUtil::BytesToHumanReadableString(estimated_size.GetIndex())));
+			output.SetValue(ESTIMATED_DECOMPRESSED_BYTES_IDX, count,
+			                Value::BIGINT(NumericCast<int64_t>(estimated_size.GetIndex())));
 		} else {
-			output.SetValue(ESTIMATED_DECOMPRESSED_SIZE_IDX, count, Value("N/A"));
+			output.SetValue(ESTIMATED_DECOMPRESSED_BYTES_IDX, count, Value());
 		}
 
 		output.SetValue(ROW_COUNT_IDX, count, Value::BIGINT(NumericCast<int64_t>(entry.row_count)));

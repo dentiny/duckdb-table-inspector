@@ -52,7 +52,7 @@ s1	tbl3
 # Verify that we can query all columns successfully
 query I
 SELECT COUNT(*) FROM (
-    SELECT database_name, schema_name, table_name, persisted_data_size
+    SELECT database_name, schema_name, table_name, persisted_data_bytes
     FROM inspect_database()
 );
 ----

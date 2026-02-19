@@ -16,9 +16,9 @@ SELECT COUNT(*) FROM inspect_storage() WHERE database_name = 'testdb';
 
 # Verify all columns are returned
 query III
-SELECT database_name, database_file_size, wal_file_size FROM inspect_storage() WHERE database_name = 'testdb';
+SELECT database_name, database_file_bytes, wal_file_bytes FROM inspect_storage() WHERE database_name = 'testdb';
 ----
-testdb	0 bytes	0 bytes
+testdb	0	0
 
 # Should not show system or temporary databases
 query I
@@ -40,6 +40,6 @@ CHECKPOINT testdb;
 
 # After checkpoint, database file size should be non-zero
 query I
-SELECT database_file_size != '0 bytes' FROM inspect_storage() WHERE database_name = 'testdb';
+SELECT database_file_bytes > 0 FROM inspect_storage() WHERE database_name = 'testdb';
 ----
 true

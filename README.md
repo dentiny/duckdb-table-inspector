@@ -39,7 +39,7 @@ SELECT * FROM inspect_database('mydb');
 | `database_name` | VARCHAR | Database name |
 | `schema_name` | VARCHAR | Schema name |
 | `table_name` | VARCHAR | Table name |
-| `persisted_data_size` | VARCHAR | Formatted size (e.g., "1.2 MiB") |
+| `persisted_data_bytes` | BIGINT | Persisted data size in bytes |
 
 ### `inspect_column()`
 
@@ -62,8 +62,8 @@ SELECT * FROM inspect_column('my_schema.my_table', 'my_column');
 | `column_name` | VARCHAR | Column name |
 | `column_type` | VARCHAR | Data type (e.g., "INTEGER", "VARCHAR") |
 | `compression` | VARCHAR | Compression method (e.g., "CONSTANT", "DICTIONARY", "FSST") |
-| `compressed_size` | VARCHAR | Compressed size on disk |
-| `estimated_decompressed_size` | VARCHAR | Estimated uncompressed size ("N/A" for variable-length types) |
+| `compressed_bytes` | BIGINT | Compressed size on disk in bytes |
+| `estimated_decompressed_bytes` | BIGINT | Estimated uncompressed size in bytes (NULL for variable-length types) |
 | `row_count` | BIGINT | Number of rows in this segment |
 
 ### `inspect_storage()`
@@ -77,8 +77,8 @@ SELECT * FROM inspect_storage();
 | Column | Type | Description |
 |--------|------|-------------|
 | `database_name` | VARCHAR | Database name |
-| `database_file_size` | VARCHAR | Size of the `.duckdb` file |
-| `wal_file_size` | VARCHAR | Size of the WAL file |
+| `database_file_bytes` | BIGINT | Size of the `.duckdb` file in bytes |
+| `wal_file_bytes` | BIGINT | Size of the WAL file in bytes |
 
 ### `inspect_block_usage()`
 
@@ -95,7 +95,7 @@ SELECT * FROM inspect_block_usage('mydb');
 | Column | Type | Description |
 |--------|------|-------------|
 | `component` | VARCHAR | Component type |
-| `size` | VARCHAR | Formatted size |
+| `size_bytes` | BIGINT | Size in bytes |
 | `percentage` | VARCHAR | Percentage of total file (e.g., "45.5%") |
 | `block_count` | BIGINT | Number of blocks used |
 
@@ -143,53 +143,53 @@ CHECKPOINT;
 **Step 1: Check file sizes**
 ```sql
 SELECT * FROM inspect_storage();
-┌───────────────┬────────────────────┬───────────────┐
-│ database_name │ database_file_size │ wal_file_size │
-│    varchar    │      varchar       │    varchar    │
-├───────────────┼────────────────────┼───────────────┤
-│ demo          │ 7.2 MiB            │ 0 B           │
-└───────────────┴────────────────────┴───────────────┘
+┌───────────────┬─────────────────────┬────────────────┐
+│ database_name │ database_file_bytes │ wal_file_bytes │
+│    varchar    │        int64        │     int64      │
+├───────────────┼─────────────────────┼────────────────┤
+│ demo          │             7602176 │              0 │
+└───────────────┴─────────────────────┴────────────────┘
 ```
 
 **Step 2: Per-table inspect**
 ```sql
 SELECT * FROM inspect_database();
-┌───────────────┬─────────────┬────────────┬─────────────────────┐
-│ database_name │ schema_name │ table_name │ persisted_data_size │
-│    varchar    │   varchar   │  varchar   │       varchar       │
-├───────────────┼─────────────┼────────────┼─────────────────────┤
-│ demo          │ main        │ events     │ 7.0 MiB             │
-└───────────────┴─────────────┴────────────┴─────────────────────┘
+┌───────────────┬─────────────┬────────────┬──────────────────────┐
+│ database_name │ schema_name │ table_name │ persisted_data_bytes │
+│    varchar    │   varchar   │  varchar   │        int64         │
+├───────────────┼─────────────┼────────────┼──────────────────────┤
+│ demo          │ main        │ events     │              7340032 │
+└───────────────┴─────────────┴────────────┴──────────────────────┘
 ```
 
 **Step 3: Drill into a specific column**
 ```sql
 SELECT * FROM inspect_column('events', 'event_id');
-┌──────────────┬─────────────┬─────────────┬─────────────┬─────────────────┬─────────────────────────────┬───────────┐
-│ row_group_id │ column_name │ column_type │ compression │ compressed_size │ estimated_decompressed_size │ row_count │
-│    int64     │   varchar   │   varchar   │   varchar   │     varchar     │           varchar           │   int64   │
-├──────────────┼─────────────┼─────────────┼─────────────┼─────────────────┼─────────────────────────────┼───────────┤
-│            0 │ event_id    │ BIGINT      │ BitPacking  │ 1.2 KiB         │ 960.0 KiB                   │    122880 │
-│            1 │ event_id    │ BIGINT      │ BitPacking  │ 1.2 KiB         │ 960.0 KiB                   │    122880 │
-│            2 │ event_id    │ BIGINT      │ BitPacking  │ 1.2 KiB         │ 960.0 KiB                   │    122880 │
-│            3 │ event_id    │ BIGINT      │ BitPacking  │ 1.2 KiB         │ 960.0 KiB                   │    122880 │
-│            4 │ event_id    │ BIGINT      │ BitPacking  │ 112 B           │ 66.2 KiB                    │      8480 │
-└──────────────┴─────────────┴─────────────┴─────────────┴─────────────────┴─────────────────────────────┴───────────┘
+┌──────────────┬─────────────┬─────────────┬─────────────┬──────────────────┬──────────────────────────────┬───────────┐
+│ row_group_id │ column_name │ column_type │ compression │ compressed_bytes │ estimated_decompressed_bytes │ row_count │
+│    int64     │   varchar   │   varchar   │   varchar   │      int64       │            int64             │   int64   │
+├──────────────┼─────────────┼─────────────┼─────────────┼──────────────────┼──────────────────────────────┼───────────┤
+│            0 │ event_id    │ BIGINT      │ BitPacking  │             1208 │                       983040 │    122880 │
+│            1 │ event_id    │ BIGINT      │ BitPacking  │             1208 │                       983040 │    122880 │
+│            2 │ event_id    │ BIGINT      │ BitPacking  │             1208 │                       983040 │    122880 │
+│            3 │ event_id    │ BIGINT      │ BitPacking  │             1208 │                       983040 │    122880 │
+│            4 │ event_id    │ BIGINT      │ BitPacking  │              112 │                        67840 │      8480 │
+└──────────────┴─────────────┴─────────────┴─────────────┴──────────────────┴──────────────────────────────┴───────────┘
 ```
 
 **Step 4: Check storage breakdown**
 ```sql
 SELECT * FROM inspect_block_usage();
-┌─────────────┬───────────┬────────────┬─────────────┐
-│  component  │   size    │ percentage │ block_count │
-│   varchar   │  varchar  │  varchar   │    int64    │
-├─────────────┼───────────┼────────────┼─────────────┤
-│ table_data  │ 7.0 MiB   │ 96.6%      │          28 │
-│ index       │ 0 B       │ 0.0%       │           0 │
-│ metadata    │ 256.0 KiB │ 3.4%       │           1 │
-│ free_blocks │ 0 B       │ 0.0%       │           0 │
-│ total       │ 7.2 MiB   │ 100.0%     │          29 │
-└─────────────┴───────────┴────────────┴─────────────┘
+┌─────────────┬────────────┬────────────┬─────────────┐
+│  component  │ size_bytes │ percentage │ block_count │
+│   varchar   │   int64    │  varchar   │    int64    │
+├─────────────┼────────────┼────────────┼─────────────┤
+│ table_data  │    7340032 │ 96.6%      │          28 │
+│ index       │          0 │ 0.0%       │           0 │
+│ metadata    │     262144 │ 3.4%       │           1 │
+│ free_blocks │          0 │ 0.0%       │           0 │
+│ total       │    7602176 │ 100.0%     │          29 │
+└─────────────┴────────────┴────────────┴─────────────┘
 ```
 
 ## Roadmap

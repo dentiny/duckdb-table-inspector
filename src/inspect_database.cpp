@@ -7,7 +7,6 @@
 #include "duckdb/catalog/default/default_schemas.hpp"
 #include "duckdb/common/assert.hpp"
 #include "duckdb/common/exception.hpp"
-#include "duckdb/common/string_util.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/main/attached_database.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
@@ -79,8 +78,8 @@ unique_ptr<FunctionData> InspectDatabaseBindInternal(ClientContext &context, con
 	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 	names.emplace_back("table_name");
 	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
-	names.emplace_back("persisted_data_size");
-	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
+	names.emplace_back("persisted_data_bytes");
+	return_types.emplace_back(LogicalType {LogicalTypeId::BIGINT});
 
 	return make_uniq<InspectDatabaseBindData>(database_name);
 }
@@ -160,7 +159,7 @@ void InspectDatabaseExecute(ClientContext &context, TableFunctionInput &data, Da
 	constexpr idx_t DATABASE_NAME_IDX = 0;
 	constexpr idx_t SCHEMA_NAME_IDX = 1;
 	constexpr idx_t TABLE_NAME_IDX = 2;
-	constexpr idx_t DATA_SIZE_IDX = 3;
+	constexpr idx_t DATA_BYTES_IDX = 3;
 
 	while (state.offset < state.entries.size() && count < STANDARD_VECTOR_SIZE) {
 		auto &entry = state.entries[state.offset];
@@ -168,8 +167,7 @@ void InspectDatabaseExecute(ClientContext &context, TableFunctionInput &data, Da
 		output.SetValue(DATABASE_NAME_IDX, count, Value(entry.database_name));
 		output.SetValue(SCHEMA_NAME_IDX, count, Value(entry.schema_name));
 		output.SetValue(TABLE_NAME_IDX, count, Value(entry.table_name));
-		output.SetValue(DATA_SIZE_IDX, count,
-		                Value(StringUtil::BytesToHumanReadableString(entry.persisted_data_size_bytes)));
+		output.SetValue(DATA_BYTES_IDX, count, Value::BIGINT(NumericCast<int64_t>(entry.persisted_data_size_bytes)));
 
 		state.offset++;
 		count++;

@@ -15,11 +15,11 @@ USE testdb;
 statement ok
 CREATE TABLE test_data (id INTEGER, name VARCHAR);
 
-# Before INSERT: empty table has "0 bytes" persisted_data_size
-query T
-SELECT persisted_data_size FROM inspect_database() WHERE table_name = 'test_data';
+# Before INSERT: empty table has 0 persisted_data_bytes
+query I
+SELECT persisted_data_bytes FROM inspect_database() WHERE table_name = 'test_data';
 ----
-0 bytes
+0
 
 statement ok
 INSERT INTO test_data SELECT i, 'name_' || i FROM range(10000) t(i);
@@ -27,8 +27,8 @@ INSERT INTO test_data SELECT i, 'name_' || i FROM range(10000) t(i);
 statement ok
 CHECKPOINT;
 
-# After CHECKPOINT: data is on disk, persisted_data_size should not be "0 bytes"
+# After CHECKPOINT: data is on disk, persisted_data_bytes should be non-zero
 query I
-SELECT persisted_data_size != '0 bytes' FROM inspect_database() WHERE table_name = 'test_data';
+SELECT persisted_data_bytes > 0 FROM inspect_database() WHERE table_name = 'test_data';
 ----
 true
