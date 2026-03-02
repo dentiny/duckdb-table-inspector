@@ -46,7 +46,10 @@ idx_t CalculateTableDataSize(const vector<ColumnSegmentInfo> &segment_info, Tabl
 //===--------------------------------------------------------------------===//
 
 // Calculates the total on-disk size of all indexes belonging to a table.
-// Sums allocation_sizes across all FixedSizeAllocator buffers for each index.
+// Sums allocation_size across all FixedSizeAllocator buffers for each index.
+// Two index states need to be handled:
+// - BoundIndex: live, in-memory index objects.
+// - UnboundIndex: deserialized metadata from disk, not yet loaded into memory.
 
 idx_t CalculateTableIndexSize(TableCatalogEntry &table) {
 	auto &storage = table.GetStorage();
@@ -57,6 +60,8 @@ idx_t CalculateTableIndexSize(TableCatalogEntry &table) {
 
 	for (auto &index : indexes.Indexes()) {
 		if (index.IsBound() && index.GetIndexType() == ART::TYPE_NAME) {
+			// BoundIndex: read allocation_size from live allocator buffers.
+			// The allocation_size is set during serialization.
 			auto &art = index.Cast<ART>();
 			for (idx_t alloc_idx = 0; alloc_idx < ART::ALLOCATOR_COUNT; ++alloc_idx) {
 				const auto info = (*art.allocators)[alloc_idx]->GetInfo();
@@ -65,6 +70,7 @@ idx_t CalculateTableIndexSize(TableCatalogEntry &table) {
 				}
 			}
 		} else if (!index.IsBound()) {
+			// UnboundIndex: read allocation_size from deserialized metadata on disk.
 			auto &unbound = index.Cast<UnboundIndex>();
 			for (const auto &alloc_info : unbound.GetStorageInfo().allocator_infos) {
 				for (const auto &alloc_size : alloc_info.allocation_sizes) {
