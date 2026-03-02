@@ -7,11 +7,15 @@
 #include "duckdb/catalog/default/default_schemas.hpp"
 #include "duckdb/common/assert.hpp"
 #include "duckdb/common/exception.hpp"
+#include "duckdb/execution/index/art/art.hpp"
+#include "duckdb/execution/index/unbound_index.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/main/attached_database.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
+#include "duckdb/storage/data_table.hpp"
 #include "duckdb/storage/storage_info.hpp"
 #include "duckdb/storage/storage_manager.hpp"
+#include "duckdb/storage/table/data_table_info.hpp"
 #include "duckdb/storage/table_storage_info.hpp"
 
 namespace duckdb {
@@ -38,6 +42,48 @@ idx_t CalculateTableDataSize(const vector<ColumnSegmentInfo> &segment_info, Tabl
 }
 
 //===--------------------------------------------------------------------===//
+// Index Size Calculation
+//===--------------------------------------------------------------------===//
+
+// Calculates the total on-disk size of all indexes belonging to a table.
+// Sums allocation_size across all FixedSizeAllocator buffers for each index.
+// Two index states need to be handled:
+// - BoundIndex: live, in-memory index objects.
+// - UnboundIndex: deserialized metadata from disk, not yet loaded into memory.
+
+idx_t CalculateTableIndexSize(TableCatalogEntry &table) {
+	auto &storage = table.GetStorage();
+	auto &table_info = *storage.GetDataTableInfo();
+	auto &indexes = table_info.GetIndexes();
+
+	idx_t total_bytes = 0;
+
+	for (auto &index : indexes.Indexes()) {
+		if (index.IsBound() && index.GetIndexType() == ART::TYPE_NAME) {
+			// BoundIndex: read allocation_size from live allocator buffers.
+			// The allocation_size is set during serialization.
+			auto &art = index.Cast<ART>();
+			for (idx_t alloc_idx = 0; alloc_idx < ART::ALLOCATOR_COUNT; ++alloc_idx) {
+				const auto info = (*art.allocators)[alloc_idx]->GetInfo();
+				for (const auto &alloc_size : info.allocation_sizes) {
+					total_bytes += alloc_size;
+				}
+			}
+		} else if (!index.IsBound()) {
+			// UnboundIndex: read allocation_size from deserialized metadata on disk.
+			auto &unbound = index.Cast<UnboundIndex>();
+			for (const auto &alloc_info : unbound.GetStorageInfo().allocator_infos) {
+				for (const auto &alloc_size : alloc_info.allocation_sizes) {
+					total_bytes += alloc_size;
+				}
+			}
+		}
+	}
+
+	return total_bytes;
+}
+
+//===--------------------------------------------------------------------===//
 // inspect_database() - List all tables with storage info
 //===--------------------------------------------------------------------===//
 
@@ -57,6 +103,7 @@ struct InspectDatabaseData : public GlobalTableFunctionState {
 		string schema_name;
 		string table_name;
 		idx_t persisted_data_size_bytes = 0;
+		idx_t index_size_bytes = 0;
 	};
 
 	vector<TableEntry> entries;
@@ -70,8 +117,8 @@ unique_ptr<FunctionData> InspectDatabaseBindInternal(ClientContext &context, con
 	D_ASSERT(return_types.empty());
 
 	// Define output columns
-	names.reserve(4);
-	return_types.reserve(4);
+	names.reserve(5);
+	return_types.reserve(5);
 	names.emplace_back("database_name");
 	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 	names.emplace_back("schema_name");
@@ -79,6 +126,8 @@ unique_ptr<FunctionData> InspectDatabaseBindInternal(ClientContext &context, con
 	names.emplace_back("table_name");
 	return_types.emplace_back(LogicalType {LogicalTypeId::VARCHAR});
 	names.emplace_back("persisted_data_bytes");
+	return_types.emplace_back(LogicalType {LogicalTypeId::BIGINT});
+	names.emplace_back("index_bytes");
 	return_types.emplace_back(LogicalType {LogicalTypeId::BIGINT});
 
 	return make_uniq<InspectDatabaseBindData>(database_name);
@@ -138,11 +187,14 @@ unique_ptr<GlobalTableFunctionState> InspectDatabaseInit(ClientContext &context,
 			const auto segment_info = table.GetColumnSegmentInfo(query_context);
 			const idx_t data_bytes = CalculateTableDataSize(segment_info, table);
 
+			const idx_t index_bytes = CalculateTableIndexSize(table);
+
 			InspectDatabaseData::TableEntry table_entry;
 			table_entry.database_name = table.ParentCatalog().GetName();
 			table_entry.schema_name = schema.name;
 			table_entry.table_name = table.name;
 			table_entry.persisted_data_size_bytes = data_bytes;
+			table_entry.index_size_bytes = index_bytes;
 
 			result->entries.push_back(std::move(table_entry));
 		});
@@ -160,6 +212,7 @@ void InspectDatabaseExecute(ClientContext &context, TableFunctionInput &data, Da
 	constexpr idx_t SCHEMA_NAME_IDX = 1;
 	constexpr idx_t TABLE_NAME_IDX = 2;
 	constexpr idx_t DATA_BYTES_IDX = 3;
+	constexpr idx_t INDEX_BYTES_IDX = 4;
 
 	while (state.offset < state.entries.size() && count < STANDARD_VECTOR_SIZE) {
 		auto &entry = state.entries[state.offset];
@@ -168,6 +221,7 @@ void InspectDatabaseExecute(ClientContext &context, TableFunctionInput &data, Da
 		output.SetValue(SCHEMA_NAME_IDX, count, Value(entry.schema_name));
 		output.SetValue(TABLE_NAME_IDX, count, Value(entry.table_name));
 		output.SetValue(DATA_BYTES_IDX, count, Value::BIGINT(NumericCast<int64_t>(entry.persisted_data_size_bytes)));
+		output.SetValue(INDEX_BYTES_IDX, count, Value::BIGINT(NumericCast<int64_t>(entry.index_size_bytes)));
 
 		state.offset++;
 		count++;

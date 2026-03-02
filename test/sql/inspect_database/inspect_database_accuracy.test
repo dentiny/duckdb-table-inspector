@@ -32,3 +32,36 @@ query I
 SELECT persisted_data_bytes > 0 FROM inspect_database() WHERE table_name = 'test_data';
 ----
 true
+
+# Table without indexes should have index_bytes = 0
+query I
+SELECT index_bytes FROM inspect_database() WHERE table_name = 'test_data';
+----
+0
+
+# After creating an index and checkpointing, index_bytes should be non-zero
+statement ok
+CREATE INDEX idx_test ON test_data(id);
+
+statement ok
+CHECKPOINT;
+
+query I
+SELECT index_bytes > 0 FROM inspect_database() WHERE table_name = 'test_data';
+----
+true
+
+# A table with a PRIMARY KEY should also have non-zero index_bytes after checkpoint
+statement ok
+CREATE TABLE test_primary_key (id INTEGER PRIMARY KEY, val INTEGER);
+
+statement ok
+INSERT INTO test_primary_key SELECT i, i * 10 FROM range(5000) t(i);
+
+statement ok
+CHECKPOINT;
+
+query II
+SELECT persisted_data_bytes > 0, index_bytes > 0 FROM inspect_database() WHERE table_name = 'test_primary_key';
+----
+true	true
