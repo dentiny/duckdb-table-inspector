@@ -12,6 +12,8 @@
 namespace duckdb {
 
 static void LoadInternal(ExtensionLoader &loader) {
+	loader.SetDescription("Provides observability into DuckDB storage internals");
+
 	RegisterInspectColumnFunction(loader);
 	RegisterInspectDatabaseFunction(loader);
 	RegisterInspectStorageFunction(loader);

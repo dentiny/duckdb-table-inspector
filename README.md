@@ -13,7 +13,7 @@ LOAD table_inspector;
 
 | Function | Description |
 |----------|-------------|
-| [`inspect_database()`](#inspect_database) | List all tables in a database with their persisted data size |
+| [`inspect_database()`](#inspect_database) | List all tables in a database with their persisted data and index size |
 | [`inspect_column()`](#inspect_column) | Per-segment storage details for a specific column (compression, size) |
 | [`inspect_storage()`](#inspect_storage) | List all attached persistent databases with file sizes |
 | [`inspect_block_usage()`](#inspect_block_usage) | High-level storage breakdown (table data vs index vs metadata vs free blocks) |
@@ -40,6 +40,7 @@ SELECT * FROM inspect_database('mydb');
 | `schema_name` | VARCHAR | Schema name |
 | `table_name` | VARCHAR | Table name |
 | `persisted_data_bytes` | BIGINT | Persisted data size in bytes |
+| `index_bytes` | BIGINT | On-disk size of all indexes on this table in bytes |
 
 ### `inspect_column()`
 
@@ -137,6 +138,8 @@ SELECT
     random() * 1000 AS value
 FROM range(500000) t(i);
 
+CREATE INDEX idx_user_id ON events(user_id);
+
 CHECKPOINT;
 ```
 
@@ -147,19 +150,19 @@ SELECT * FROM inspect_storage();
 │ database_name │ database_file_bytes │ wal_file_bytes │
 │    varchar    │        int64        │     int64      │
 ├───────────────┼─────────────────────┼────────────────┤
-│ demo          │             7602176 │              0 │
+│ demo          │            13893632 │              0 │
 └───────────────┴─────────────────────┴────────────────┘
 ```
 
 **Step 2: Per-table inspect**
 ```sql
 SELECT * FROM inspect_database();
-┌───────────────┬─────────────┬────────────┬──────────────────────┐
-│ database_name │ schema_name │ table_name │ persisted_data_bytes │
-│    varchar    │   varchar   │  varchar   │        int64         │
-├───────────────┼─────────────┼────────────┼──────────────────────┤
-│ demo          │ main        │ events     │              7340032 │
-└───────────────┴─────────────┴────────────┴──────────────────────┘
+┌───────────────┬─────────────┬────────────┬──────────────────────┬─────────────┐
+│ database_name │ schema_name │ table_name │ persisted_data_bytes │ index_bytes │
+│    varchar    │   varchar   │  varchar   │        int64         │    int64    │
+├───────────────┼─────────────┼────────────┼──────────────────────┼─────────────┤
+│ demo          │ main        │ events     │              7340032 │     6284968 │
+└───────────────┴─────────────┴────────────┴──────────────────────┴─────────────┘
 ```
 
 **Step 3: Drill into a specific column**
@@ -184,17 +187,17 @@ SELECT * FROM inspect_block_usage();
 │  component  │ size_bytes │ percentage │ block_count │
 │   varchar   │   int64    │  varchar   │    int64    │
 ├─────────────┼────────────┼────────────┼─────────────┤
-│ table_data  │    7340032 │ 96.6%      │          28 │
-│ index       │          0 │ 0.0%       │           0 │
-│ metadata    │     262144 │ 3.4%       │           1 │
+│ table_data  │    7340032 │ 52.8%      │          28 │
+│ index       │    6291456 │ 45.3%      │          24 │
+│ metadata    │     262144 │ 1.9%       │           1 │
 │ free_blocks │          0 │ 0.0%       │           0 │
-│ total       │    7602176 │ 100.0%     │          29 │
+│ total       │   13893632 │ 100.0%     │          53 │
 └─────────────┴────────────┴────────────┴─────────────┘
 ```
 
 ## Roadmap
 
-- [ ] Provide more information for per-table inspect (e.g., index)
+- [x] Provide more information for per-table inspect (e.g., index)
 
 ## License
 
