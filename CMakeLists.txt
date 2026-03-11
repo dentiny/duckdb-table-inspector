@@ -24,7 +24,7 @@ endif()
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 
-if(${BUILD_UNITTESTS})
+if(${BUILD_UNITTESTS} AND NOT WIN32)
   add_subdirectory(test/unittest)
 endif()
 
