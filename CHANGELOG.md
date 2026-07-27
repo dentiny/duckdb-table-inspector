@@ -1,3 +1,9 @@
+# 0.1.5
+
+- Update DuckDB to v1.5.5 ([#41])
+
+[#41]: https://github.com/dentiny/duckdb-table-inspector/pull/41
+
 # 0.1.4
 
 - Update DuckDB to v1.5.4 ([#39])
