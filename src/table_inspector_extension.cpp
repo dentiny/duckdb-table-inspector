@@ -1,11 +1,7 @@
 #define DUCKDB_EXTENSION_MAIN
 
 #include "table_inspector_extension.hpp"
-
-#include "inspect_column.hpp"
-#include "inspect_database.hpp"
-#include "inspect_storage.hpp"
-#include "inspect_block_usage.hpp"
+#include "table_inspector_functions.hpp"
 
 #include "duckdb/main/extension/extension_loader.hpp"
 
@@ -13,11 +9,7 @@ namespace duckdb {
 
 static void LoadInternal(ExtensionLoader &loader) {
 	loader.SetDescription("Provides observability into DuckDB storage internals");
-
-	RegisterInspectColumnFunction(loader);
-	RegisterInspectDatabaseFunction(loader);
-	RegisterInspectStorageFunction(loader);
-	RegisterInspectBlockUsageFunction(loader);
+	RegisterTableInspectorFunctions(loader);
 }
 
 void TableInspectorExtension::Load(ExtensionLoader &loader) {

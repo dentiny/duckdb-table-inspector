@@ -9,8 +9,8 @@
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/common/types.hpp"
 #include "duckdb/common/unordered_map.hpp"
+#include "duckdb/function/function_set.hpp"
 #include "duckdb/function/table_function.hpp"
-#include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/parser/qualified_name.hpp"
 #include "duckdb/planner/binder.hpp"
 #include "duckdb/storage/storage_manager.hpp"
@@ -261,19 +261,21 @@ void InspectColumnExecute(ClientContext &context, TableFunctionInput &data, Data
 
 } // namespace
 
-void RegisterInspectColumnFunction(ExtensionLoader &loader) {
+TableFunctionSet GetInspectColumnFunction() {
+	TableFunctionSet result("inspect_column");
+
 	// inspect_column(database_name, table_name, column_name)
-	TableFunction inspect_column_with_db("inspect_column",
-	                                     {LogicalType {LogicalTypeId::VARCHAR}, LogicalType {LogicalTypeId::VARCHAR},
-	                                      LogicalType {LogicalTypeId::VARCHAR}},
-	                                     InspectColumnExecute, InspectColumnBindWithDatabase, InspectColumnInit);
-	loader.RegisterFunction(std::move(inspect_column_with_db));
+	result.AddFunction(TableFunction("inspect_column",
+	                                 {LogicalType {LogicalTypeId::VARCHAR}, LogicalType {LogicalTypeId::VARCHAR},
+	                                  LogicalType {LogicalTypeId::VARCHAR}},
+	                                 InspectColumnExecute, InspectColumnBindWithDatabase, InspectColumnInit));
 
 	// inspect_column(table_name, column_name) — uses current database
-	TableFunction inspect_column_current_db(
-	    "inspect_column", {LogicalType {LogicalTypeId::VARCHAR}, LogicalType {LogicalTypeId::VARCHAR}},
-	    InspectColumnExecute, InspectColumnBindCurrentDB, InspectColumnInit);
-	loader.RegisterFunction(std::move(inspect_column_current_db));
+	result.AddFunction(TableFunction("inspect_column",
+	                                 {LogicalType {LogicalTypeId::VARCHAR}, LogicalType {LogicalTypeId::VARCHAR}},
+	                                 InspectColumnExecute, InspectColumnBindCurrentDB, InspectColumnInit));
+
+	return result;
 }
 
 } // namespace duckdb

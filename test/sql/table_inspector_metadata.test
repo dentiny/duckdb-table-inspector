@@ -1,0 +1,29 @@
+# name: test/sql/table_inspector_metadata.test
+# description: test catalog metadata for table_inspector table functions
+# group: [sql]
+
+require table_inspector
+
+query I
+SELECT count(*)
+FROM duckdb_functions()
+WHERE function_name IN (
+    'inspect_block_usage',
+    'inspect_column',
+    'inspect_database',
+    'inspect_storage'
+)
+AND description IS NOT NULL
+AND length(examples) > 0
+AND length(categories) > 0
+AND parameters = CASE
+    WHEN function_name = 'inspect_column' AND length(parameter_types) = 3
+        THEN ['database_name', 'table_name', 'column_name']
+    WHEN function_name = 'inspect_column'
+        THEN ['table_name', 'column_name']
+    WHEN length(parameter_types) = 1
+        THEN ['database_name']
+    ELSE []
+END;
+----
+7

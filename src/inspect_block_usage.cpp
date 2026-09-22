@@ -6,8 +6,8 @@
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/catalog/default/default_schemas.hpp"
 #include "duckdb/common/assert.hpp"
+#include "duckdb/function/function_set.hpp"
 #include "duckdb/function/table_function.hpp"
-#include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/storage/database_size.hpp"
 #include "duckdb/storage/table_storage_info.hpp"
 
@@ -215,17 +215,19 @@ void InspectBlockUsageExecute(ClientContext &context, TableFunctionInput &data, 
 
 } // namespace
 
-void RegisterInspectBlockUsageFunction(ExtensionLoader &loader) {
+TableFunctionSet GetInspectBlockUsageFunction() {
+	TableFunctionSet result("inspect_block_usage");
+
 	// inspect_block_usage(database_name)
-	TableFunction inspect_block_usage_with_db("inspect_block_usage", {LogicalType {LogicalTypeId::VARCHAR}},
-	                                          InspectBlockUsageExecute, InspectBlockUsageBindWithDatabase,
-	                                          InspectBlockUsageInit);
-	loader.RegisterFunction(std::move(inspect_block_usage_with_db));
+	result.AddFunction(TableFunction("inspect_block_usage", {LogicalType {LogicalTypeId::VARCHAR}},
+	                                 InspectBlockUsageExecute, InspectBlockUsageBindWithDatabase,
+	                                 InspectBlockUsageInit));
 
 	// inspect_block_usage() — uses current database
-	TableFunction inspect_block_usage_current_db("inspect_block_usage", {}, InspectBlockUsageExecute,
-	                                             InspectBlockUsageBindCurrentDB, InspectBlockUsageInit);
-	loader.RegisterFunction(std::move(inspect_block_usage_current_db));
+	result.AddFunction(TableFunction("inspect_block_usage", {}, InspectBlockUsageExecute,
+	                                 InspectBlockUsageBindCurrentDB, InspectBlockUsageInit));
+
+	return result;
 }
 
 } // namespace duckdb

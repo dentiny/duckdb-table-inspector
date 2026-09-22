@@ -12,8 +12,13 @@ project(${TARGET_NAME})
 include_directories(src/include)
 
 set(EXTENSION_SOURCES
-    src/inspect_column.cpp src/inspect_database.cpp src/inspect_storage.cpp
-    src/inspect_block_usage.cpp src/table_inspector_extension.cpp src/util.cpp)
+    src/inspect_column.cpp
+    src/inspect_database.cpp
+    src/inspect_storage.cpp
+    src/inspect_block_usage.cpp
+    src/table_inspector_functions.cpp
+    src/table_inspector_extension.cpp
+    src/util.cpp)
 
 if(NOT MSVC)
   set(CMAKE_CXX_FLAGS
