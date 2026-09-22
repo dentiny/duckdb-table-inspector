@@ -6,7 +6,6 @@
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/main/attached_database.hpp"
 #include "duckdb/main/database_manager.hpp"
-#include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/storage/database_size.hpp"
 
 namespace duckdb {
@@ -99,11 +98,8 @@ void InspectStorageExecute(ClientContext &context, TableFunctionInput &data, Dat
 
 } // namespace
 
-void RegisterInspectStorageFunction(ExtensionLoader &loader) {
-	// Register inspect_storage() table function
-	TableFunction inspect_storage_func("inspect_storage", {}, InspectStorageExecute, InspectStorageBind,
-	                                   InspectStorageInit);
-	loader.RegisterFunction(std::move(inspect_storage_func));
+TableFunction GetInspectStorageFunction() {
+	return TableFunction("inspect_storage", {}, InspectStorageExecute, InspectStorageBind, InspectStorageInit);
 }
 
 } // namespace duckdb

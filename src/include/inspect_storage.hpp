@@ -2,8 +2,8 @@
 
 namespace duckdb {
 
-class ExtensionLoader;
+class TableFunction;
 
-void RegisterInspectStorageFunction(ExtensionLoader &loader);
+TableFunction GetInspectStorageFunction();
 
 } // namespace duckdb

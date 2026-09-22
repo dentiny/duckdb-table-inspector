@@ -9,9 +9,9 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/execution/index/art/art.hpp"
 #include "duckdb/execution/index/unbound_index.hpp"
+#include "duckdb/function/function_set.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/main/attached_database.hpp"
-#include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/storage/data_table.hpp"
 #include "duckdb/storage/storage_info.hpp"
 #include "duckdb/storage/storage_manager.hpp"
@@ -232,17 +232,18 @@ void InspectDatabaseExecute(ClientContext &context, TableFunctionInput &data, Da
 
 } // namespace
 
-void RegisterInspectDatabaseFunction(ExtensionLoader &loader) {
+TableFunctionSet GetInspectDatabaseFunction() {
+	TableFunctionSet result("inspect_database");
+
 	// inspect_database(database_name)
-	TableFunction inspect_database_with_db("inspect_database", {LogicalType {LogicalTypeId::VARCHAR}},
-	                                       InspectDatabaseExecute, InspectDatabaseBindWithDatabase,
-	                                       InspectDatabaseInit);
-	loader.RegisterFunction(std::move(inspect_database_with_db));
+	result.AddFunction(TableFunction("inspect_database", {LogicalType {LogicalTypeId::VARCHAR}}, InspectDatabaseExecute,
+	                                 InspectDatabaseBindWithDatabase, InspectDatabaseInit));
 
 	// inspect_database() — uses current database
-	TableFunction inspect_database_current_db("inspect_database", {}, InspectDatabaseExecute,
-	                                          InspectDatabaseBindCurrentDB, InspectDatabaseInit);
-	loader.RegisterFunction(std::move(inspect_database_current_db));
+	result.AddFunction(TableFunction("inspect_database", {}, InspectDatabaseExecute, InspectDatabaseBindCurrentDB,
+	                                 InspectDatabaseInit));
+
+	return result;
 }
 
 } // namespace duckdb

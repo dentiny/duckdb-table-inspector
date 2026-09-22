@@ -1,3 +1,10 @@
+# 0.1.6
+
+## Added
+
+- Add descriptions, examples, categories, and parameter names for all table
+  functions in `duckdb_functions()`.
+
 # 0.1.5
 
 - Update DuckDB to v1.5.5 ([#41])
