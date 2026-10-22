@@ -1,3 +1,13 @@
+# 0.2.0
+
+## Changed
+
+- Upgrade DuckDB to `v2.0.0` and extension-ci-tools to the latest main commit.
+- Use DuckDB identifiers, qualified catalog lookups, and vector append APIs.
+- Preserve documented positional parameter names in `duckdb_functions()`.
+- Read index storage metadata through DuckDB's stable index entry handles.
+- Support unit-test linking against both source and prebuilt DuckDB builds.
+
 # 0.1.6
 
 ## Changed

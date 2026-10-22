@@ -125,3 +125,24 @@ query I
 SELECT COUNT(*) FROM inspect_column('testdb', 't_large', 'big_text') WHERE compressed_bytes > 1048576;
 ----
 1
+
+# Resolve catalog-qualified names through DuckDB's identifier-aware catalog API.
+query T
+SELECT DISTINCT column_type FROM inspect_column('testdb.s1.t2', 'VAL');
+----
+INTEGER
+
+statement ok
+CREATE SCHEMA "Mixed Schema";
+
+statement ok
+CREATE TABLE "Mixed Schema"."Mixed Table" AS SELECT 42 AS "Mixed Column";
+
+statement ok
+CHECKPOINT;
+
+query T
+SELECT DISTINCT column_type
+FROM inspect_column('TESTDB', '"Mixed Schema"."Mixed Table"', 'mixed column');
+----
+INTEGER

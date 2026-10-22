@@ -5,14 +5,17 @@
 #include "duckdb/common/algorithm.hpp"
 #include "duckdb/common/assert.hpp"
 #include "duckdb/common/exception.hpp"
+#include "duckdb/common/identifier.hpp"
+#include "duckdb/common/types/data_chunk.hpp"
 #include "duckdb/common/optional_idx.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/common/types.hpp"
 #include "duckdb/common/unordered_map.hpp"
 #include "duckdb/function/function_set.hpp"
 #include "duckdb/function/table_function.hpp"
+#include "duckdb/main/attached_database.hpp"
 #include "duckdb/parser/qualified_name.hpp"
-#include "duckdb/planner/binder.hpp"
+#include "duckdb/storage/block_manager.hpp"
 #include "duckdb/storage/storage_manager.hpp"
 #include "duckdb/storage/table_storage_info.hpp"
 
@@ -27,7 +30,7 @@ namespace {
 // Filtered segment entry with calculated compressed size
 struct FilteredSegmentEntry {
 	idx_t row_group_index;
-	string column_name;
+	Identifier column_name;
 	LogicalType column_type;
 	string compression_type;
 	idx_t compressed_size;
@@ -36,12 +39,12 @@ struct FilteredSegmentEntry {
 };
 
 struct InspectColumnBindData : public TableFunctionData {
-	InspectColumnBindData(TableCatalogEntry &table_entry_p, string column_name_p, LogicalType column_type_p)
+	InspectColumnBindData(TableCatalogEntry &table_entry_p, Identifier column_name_p, LogicalType column_type_p)
 	    : table_entry(table_entry_p), column_name(std::move(column_name_p)), column_type(std::move(column_type_p)) {
 	}
 
 	TableCatalogEntry &table_entry;
-	string column_name;
+	Identifier column_name;
 	LogicalType column_type;
 	vector<FilteredSegmentEntry> filtered_segments;
 };
@@ -72,7 +75,7 @@ bool IsTargetMainDataSegment(const ColumnSegmentInfo &seg, idx_t target_column_i
 
 // Groups ALL segments by block_id to calculate sizes based on offset differences
 vector<FilteredSegmentEntry> FilterAndCalculateSegments(const vector<ColumnSegmentInfo> &all_segments,
-                                                        idx_t target_column_id, const string &column_name,
+                                                        idx_t target_column_id, const Identifier &column_name,
                                                         const LogicalType &column_type, idx_t block_alloc_size) {
 	// Build a map of block_id -> all segment offsets (sorted)
 	// This includes segments from ALL columns, so we can calculate sizes
@@ -141,9 +144,9 @@ optional_idx CalculateEstimatedDecompressedSize(const LogicalType &type, idx_t r
 }
 
 // Shared bind logic for all inspect_column overloads
-unique_ptr<FunctionData> InspectColumnBindInternal(ClientContext &context, const string &database_name,
-                                                   const string &table_name_str, const string &column_name,
-                                                   vector<LogicalType> &return_types, vector<string> &names) {
+unique_ptr<FunctionData> InspectColumnBindInternal(ClientContext &context, const Identifier &database_name,
+                                                   const string &table_name_str, const Identifier &column_name,
+                                                   vector<LogicalType> &return_types, vector<Identifier> &names) {
 	D_ASSERT(names.empty());
 	D_ASSERT(return_types.empty());
 
@@ -167,15 +170,15 @@ unique_ptr<FunctionData> InspectColumnBindInternal(ClientContext &context, const
 
 	// Parse table name (handles schema.table format)
 	auto qname = QualifiedName::Parse(table_name_str);
-	Binder::BindSchemaOrCatalog(context, qname.catalog, qname.schema);
-
-	auto &catalog_entry = Catalog::GetEntry(context, CatalogType::TABLE_ENTRY, database_name, qname.schema, qname.name);
-	auto &table_entry = catalog_entry.Cast<TableCatalogEntry>();
+	if (!database_name.empty()) {
+		qname = qname.WithCatalog(database_name);
+	}
+	auto &table_entry = Catalog::GetEntry<TableCatalogEntry>(context, qname);
 
 	// Find the target column
 	auto &columns = table_entry.GetColumns();
 	if (!columns.ColumnExists(column_name)) {
-		throw InvalidInputException("Column '%s' not found in table '%s'", column_name, qname.name);
+		throw InvalidInputException("Column '%s' not found in table '%s'", column_name, qname.Name());
 	}
 	const auto &col = columns.GetColumn(column_name);
 	const idx_t target_column_id = col.Physical().index;
@@ -192,24 +195,25 @@ unique_ptr<FunctionData> InspectColumnBindInternal(ClientContext &context, const
 	result->filtered_segments =
 	    FilterAndCalculateSegments(all_segments, target_column_id, column_name, column_type, block_alloc_size);
 
-	return std::move(result);
+	return result;
 }
 
 // inspect_column(database_name, table_name, column_name)
 unique_ptr<FunctionData> InspectColumnBindWithDatabase(ClientContext &context, TableFunctionBindInput &input,
-                                                       vector<LogicalType> &return_types, vector<string> &names) {
-	const auto database_name = input.inputs[0].GetValue<string>();
+                                                       vector<LogicalType> &return_types, vector<Identifier> &names) {
+	const auto database_name = input.inputs[0].GetValue<Identifier>();
 	const auto table_name_str = input.inputs[1].GetValue<string>();
-	const auto column_name = input.inputs[2].GetValue<string>();
+	const auto column_name = input.inputs[2].GetValue<Identifier>();
 	return InspectColumnBindInternal(context, database_name, table_name_str, column_name, return_types, names);
 }
 
 // inspect_column(table_name, column_name) — uses current database
 unique_ptr<FunctionData> InspectColumnBindCurrentDB(ClientContext &context, TableFunctionBindInput &input,
-                                                    vector<LogicalType> &return_types, vector<string> &names) {
+                                                    vector<LogicalType> &return_types, vector<Identifier> &names) {
 	const auto table_name_str = input.inputs[0].GetValue<string>();
-	const auto column_name = input.inputs[1].GetValue<string>();
-	return InspectColumnBindInternal(context, INVALID_CATALOG, table_name_str, column_name, return_types, names);
+	const auto column_name = input.inputs[1].GetValue<Identifier>();
+	return InspectColumnBindInternal(context, Identifier::InvalidCatalog(), table_name_str, column_name, return_types,
+	                                 names);
 }
 
 unique_ptr<GlobalTableFunctionState> InspectColumnInit(ClientContext &context, TableFunctionInitInput &input) {
@@ -233,30 +237,30 @@ void InspectColumnExecute(ClientContext &context, TableFunctionInput &data, Data
 	while (state.offset < bind_data.filtered_segments.size() && count < STANDARD_VECTOR_SIZE) {
 		auto &entry = bind_data.filtered_segments[state.offset];
 
-		output.SetValue(ROW_GROUP_ID_IDX, count, Value::BIGINT(NumericCast<int64_t>(entry.row_group_index)));
-		output.SetValue(COLUMN_NAME_IDX, count, Value(entry.column_name));
-		output.SetValue(COLUMN_TYPE_IDX, count, Value(entry.column_type.ToString()));
-		output.SetValue(COMPRESSION_IDX, count, Value(entry.compression_type));
+		output.data[ROW_GROUP_ID_IDX].Append(Value::BIGINT(NumericCast<int64_t>(entry.row_group_index)));
+		output.data[COLUMN_NAME_IDX].Append(Value(entry.column_name));
+		output.data[COLUMN_TYPE_IDX].Append(Value(entry.column_type.ToString()));
+		output.data[COMPRESSION_IDX].Append(Value(entry.compression_type));
 
 		// Total compressed size = main block portion + additional blocks
 		const idx_t total_compressed_size = entry.compressed_size + entry.additional_blocks_size;
-		output.SetValue(COMPRESSED_BYTES_IDX, count, Value::BIGINT(NumericCast<int64_t>(total_compressed_size)));
+		output.data[COMPRESSED_BYTES_IDX].Append(Value::BIGINT(NumericCast<int64_t>(total_compressed_size)));
 
 		const auto estimated_size = CalculateEstimatedDecompressedSize(entry.column_type, entry.row_count);
 		if (estimated_size.IsValid()) {
-			output.SetValue(ESTIMATED_DECOMPRESSED_BYTES_IDX, count,
-			                Value::BIGINT(NumericCast<int64_t>(estimated_size.GetIndex())));
+			output.data[ESTIMATED_DECOMPRESSED_BYTES_IDX].Append(
+			    Value::BIGINT(NumericCast<int64_t>(estimated_size.GetIndex())));
 		} else {
-			output.SetValue(ESTIMATED_DECOMPRESSED_BYTES_IDX, count, Value());
+			output.data[ESTIMATED_DECOMPRESSED_BYTES_IDX].Append(Value());
 		}
 
-		output.SetValue(ROW_COUNT_IDX, count, Value::BIGINT(NumericCast<int64_t>(entry.row_count)));
+		output.data[ROW_COUNT_IDX].Append(Value::BIGINT(NumericCast<int64_t>(entry.row_count)));
 
 		state.offset++;
 		count++;
 	}
 
-	output.SetCardinality(count);
+	output.CheckCardinality(count);
 }
 
 } // namespace

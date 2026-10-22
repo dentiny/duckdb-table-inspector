@@ -6,6 +6,8 @@
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/catalog/default/default_schemas.hpp"
 #include "duckdb/common/assert.hpp"
+#include "duckdb/common/identifier.hpp"
+#include "duckdb/common/types/data_chunk.hpp"
 #include "duckdb/function/function_set.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/storage/database_size.hpp"
@@ -30,10 +32,10 @@ struct BlockUsageEntry {
 };
 
 struct InspectBlockUsageBindData : public TableFunctionData {
-	explicit InspectBlockUsageBindData(string database_name_p) : database_name(std::move(database_name_p)) {
+	explicit InspectBlockUsageBindData(Identifier database_name_p) : database_name(std::move(database_name_p)) {
 	}
 
-	string database_name;
+	Identifier database_name;
 };
 
 struct InspectBlockUsageState : public GlobalTableFunctionState {
@@ -75,8 +77,8 @@ idx_t CountMetadataBlocks(const vector<MetadataBlockInfo> &metadata_info) {
 }
 
 // Shared bind logic for all inspect_block_usage overloads
-unique_ptr<FunctionData> InspectBlockUsageBindInternal(ClientContext &context, const string &database_name,
-                                                       vector<LogicalType> &return_types, vector<string> &names) {
+unique_ptr<FunctionData> InspectBlockUsageBindInternal(ClientContext &context, const Identifier &database_name,
+                                                       vector<LogicalType> &return_types, vector<Identifier> &names) {
 	D_ASSERT(names.empty());
 	D_ASSERT(return_types.empty());
 
@@ -97,15 +99,16 @@ unique_ptr<FunctionData> InspectBlockUsageBindInternal(ClientContext &context, c
 
 // inspect_block_usage(database_name)
 unique_ptr<FunctionData> InspectBlockUsageBindWithDatabase(ClientContext &context, TableFunctionBindInput &input,
-                                                           vector<LogicalType> &return_types, vector<string> &names) {
-	const auto database_name = input.inputs[0].GetValue<string>();
+                                                           vector<LogicalType> &return_types,
+                                                           vector<Identifier> &names) {
+	const auto database_name = input.inputs[0].GetValue<Identifier>();
 	return InspectBlockUsageBindInternal(context, database_name, return_types, names);
 }
 
 // inspect_block_usage() — uses current database
 unique_ptr<FunctionData> InspectBlockUsageBindCurrentDB(ClientContext &context, TableFunctionBindInput &input,
-                                                        vector<LogicalType> &return_types, vector<string> &names) {
-	return InspectBlockUsageBindInternal(context, INVALID_CATALOG, return_types, names);
+                                                        vector<LogicalType> &return_types, vector<Identifier> &names) {
+	return InspectBlockUsageBindInternal(context, Identifier::InvalidCatalog(), return_types, names);
 }
 
 unique_ptr<GlobalTableFunctionState> InspectBlockUsageInit(ClientContext &context, TableFunctionInitInput &input) {
@@ -185,7 +188,7 @@ unique_ptr<GlobalTableFunctionState> InspectBlockUsageInit(ClientContext &contex
 	total_entry.percentage = FormatPercentage(total_blocks, total_blocks);
 	result->entries.push_back(std::move(total_entry));
 
-	return std::move(result);
+	return result;
 }
 
 void InspectBlockUsageExecute(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
@@ -201,16 +204,16 @@ void InspectBlockUsageExecute(ClientContext &context, TableFunctionInput &data, 
 	while (state.offset < state.entries.size() && count < STANDARD_VECTOR_SIZE) {
 		auto &entry = state.entries[state.offset];
 
-		output.SetValue(COMPONENT_IDX, count, Value(entry.component));
-		output.SetValue(SIZE_BYTES_IDX, count, Value::BIGINT(NumericCast<int64_t>(entry.size_bytes)));
-		output.SetValue(PERCENTAGE_IDX, count, Value(entry.percentage));
-		output.SetValue(BLOCK_COUNT_IDX, count, Value::BIGINT(NumericCast<int64_t>(entry.block_count)));
+		output.data[COMPONENT_IDX].Append(Value(entry.component));
+		output.data[SIZE_BYTES_IDX].Append(Value::BIGINT(NumericCast<int64_t>(entry.size_bytes)));
+		output.data[PERCENTAGE_IDX].Append(Value(entry.percentage));
+		output.data[BLOCK_COUNT_IDX].Append(Value::BIGINT(NumericCast<int64_t>(entry.block_count)));
 
 		state.offset++;
 		count++;
 	}
 
-	output.SetCardinality(count);
+	output.CheckCardinality(count);
 }
 
 } // namespace
