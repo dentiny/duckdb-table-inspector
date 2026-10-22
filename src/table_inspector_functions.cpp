@@ -5,6 +5,8 @@
 #include "inspect_database.hpp"
 #include "inspect_storage.hpp"
 
+#include "duckdb/common/assert.hpp"
+#include "duckdb/common/identifier.hpp"
 #include "duckdb/function/function_set.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
@@ -25,7 +27,17 @@ FunctionDescription DescribeFunction(vector<LogicalType> parameter_types, vector
 	return result;
 }
 
+// Expose documented names through duckdb_functions() without changing positional-only binding semantics.
+void SetParameterNames(TableFunction &function, const FunctionDescription &description) {
+	auto &signature = function.GetSignature();
+	D_ASSERT(signature.GetParameterCount() == description.parameter_names.size());
+	for (idx_t i = 0; i < description.parameter_names.size(); i++) {
+		signature.GetParameter(i).SetName(Identifier(description.parameter_names[i]));
+	}
+}
+
 void RegisterTableFunction(ExtensionLoader &loader, TableFunction function, FunctionDescription description) {
+	SetParameterNames(function, description);
 	CreateTableFunctionInfo info(std::move(function));
 	info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
 	info.descriptions.push_back(std::move(description));
@@ -34,6 +46,16 @@ void RegisterTableFunction(ExtensionLoader &loader, TableFunction function, Func
 
 void RegisterTableFunction(ExtensionLoader &loader, TableFunctionSet functions,
                            vector<FunctionDescription> descriptions) {
+	functions.ApplyToFunctions([&](TableFunction &function) {
+		for (const auto &description : descriptions) {
+			const FunctionSignature described_signature(description.parameter_types, LogicalType::INVALID);
+			if (function.GetSignature().IsSameOverload(described_signature)) {
+				SetParameterNames(function, description);
+				return;
+			}
+		}
+		D_ASSERT(false); // Every registered overload must have matching documentation.
+	});
 	CreateTableFunctionInfo info(std::move(functions));
 	info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
 	info.descriptions = std::move(descriptions);
