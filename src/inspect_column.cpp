@@ -178,7 +178,8 @@ unique_ptr<FunctionData> InspectColumnBindInternal(ClientContext &context, const
 	// Find the target column
 	auto &columns = table_entry.GetColumns();
 	if (!columns.ColumnExists(column_name)) {
-		throw InvalidInputException("Column '%s' not found in table '%s'", column_name, qname.Name());
+		throw InvalidInputException("Column '%s' not found in table '%s'", column_name.GetIdentifierName(),
+		                            qname.Name().GetIdentifierName());
 	}
 	const auto &col = columns.GetColumn(column_name);
 	const idx_t target_column_id = col.Physical().index;

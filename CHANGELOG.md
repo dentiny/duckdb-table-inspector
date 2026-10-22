@@ -1,5 +1,9 @@
 # 0.2.0
 
+## Fixed
+
+- Preserve missing-column diagnostic text when rendering identifier names on DuckDB v2.
+
 ## Changed
 
 - Upgrade DuckDB to `v2.0.0` and extension-ci-tools to the latest main commit.
