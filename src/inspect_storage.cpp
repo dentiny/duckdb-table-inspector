@@ -2,6 +2,8 @@
 
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/common/assert.hpp"
+#include "duckdb/common/identifier.hpp"
+#include "duckdb/common/types/data_chunk.hpp"
 #include "duckdb/common/vector.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/main/attached_database.hpp"
@@ -25,7 +27,7 @@ struct InspectStorageData : public GlobalTableFunctionState {
 	}
 
 	struct DatabaseEntry {
-		string database_name;
+		Identifier database_name;
 		idx_t database_file_size_bytes = 0;
 		idx_t wal_file_size_bytes = 0;
 	};
@@ -35,7 +37,7 @@ struct InspectStorageData : public GlobalTableFunctionState {
 };
 
 unique_ptr<FunctionData> InspectStorageBind(ClientContext &context, TableFunctionBindInput &input,
-                                            vector<LogicalType> &return_types, vector<string> &names) {
+                                            vector<LogicalType> &return_types, vector<Identifier> &names) {
 	D_ASSERT(names.empty());
 	D_ASSERT(return_types.empty());
 
@@ -69,7 +71,7 @@ unique_ptr<GlobalTableFunctionState> InspectStorageInit(ClientContext &context, 
 		result->entries.push_back(std::move(entry));
 	}
 
-	return std::move(result);
+	return result;
 }
 
 void InspectStorageExecute(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
@@ -84,16 +86,16 @@ void InspectStorageExecute(ClientContext &context, TableFunctionInput &data, Dat
 	while (state.offset < state.entries.size() && count < STANDARD_VECTOR_SIZE) {
 		auto &entry = state.entries[state.offset];
 
-		output.SetValue(DATABASE_NAME_IDX, count, Value(entry.database_name));
-		output.SetValue(DATABASE_FILE_BYTES_IDX, count,
-		                Value::BIGINT(NumericCast<int64_t>(entry.database_file_size_bytes)));
-		output.SetValue(WAL_FILE_BYTES_IDX, count, Value::BIGINT(NumericCast<int64_t>(entry.wal_file_size_bytes)));
+		output.data[DATABASE_NAME_IDX].Append(Value(entry.database_name));
+		output.data[DATABASE_FILE_BYTES_IDX].Append(
+		    Value::BIGINT(NumericCast<int64_t>(entry.database_file_size_bytes)));
+		output.data[WAL_FILE_BYTES_IDX].Append(Value::BIGINT(NumericCast<int64_t>(entry.wal_file_size_bytes)));
 
 		state.offset++;
 		count++;
 	}
 
-	output.SetCardinality(count);
+	output.CheckCardinality(count);
 }
 
 } // namespace
