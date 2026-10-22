@@ -110,21 +110,35 @@ SELECT * FROM inspect_column('testdb', 't', 'nonexistent_column');
 ----
 Column 'nonexistent_column' not found in table 't'
 
-# Test large segments with additional_blocks
+# Test large segments with additional_blocks. Keep overflow values uncompressed.
+statement ok
+SET force_compression='uncompressed';
+
 statement ok
 CREATE TABLE t_large (id INTEGER, big_text VARCHAR);
 
 statement ok
-INSERT INTO t_large SELECT i, repeat('x', 10000) FROM range(1000) r(i);
+INSERT INTO t_large SELECT i, 'row' || i || repeat('x', 10000) FROM range(1000) r(i);
 
 statement ok
 CHECKPOINT;
 
-# Large segment should have size > 1 MiB (spans multiple blocks)
-query I
-SELECT COUNT(*) FROM inspect_column('testdb', 't_large', 'big_text') WHERE compressed_bytes > 1048576;
+statement ok
+RESET force_compression;
+
+# Verify the fixture actually uses uncompressed overflow blocks.
+query II
+SELECT bool_and(compression = 'Uncompressed'), bool_or(len(additional_block_ids) > 0)
+FROM pragma_storage_info('t_large') WHERE segment_type = 'VARCHAR';
 ----
-1
+true	true
+
+# Include overflow bytes across all segments, independent of segment splitting.
+query I
+SELECT COUNT(*) > 0 AND SUM(compressed_bytes) > 1048576
+FROM inspect_column('testdb', 't_large', 'big_text');
+----
+true
 
 # Resolve catalog-qualified names through DuckDB's identifier-aware catalog API.
 query T

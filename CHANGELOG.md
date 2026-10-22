@@ -2,6 +2,7 @@
 
 ## Fixed
 
+- Force uncompressed, distinct large strings in the overflow-block regression and validate overflow storage plus aggregate inspected bytes independently of segment splitting.
 - Preserve missing-column diagnostic text when rendering identifier names on DuckDB v2.
 
 ## Changed
