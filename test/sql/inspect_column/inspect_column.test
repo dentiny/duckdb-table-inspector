@@ -149,8 +149,10 @@ INTEGER
 statement ok
 CREATE SCHEMA "Mixed Schema";
 
+# Use varying values so the quoted-name fixture has a persistent data block.
 statement ok
-CREATE TABLE "Mixed Schema"."Mixed Table" AS SELECT 42 AS "Mixed Column";
+CREATE TABLE "Mixed Schema"."Mixed Table" AS
+SELECT (i % 97)::INTEGER AS "Mixed Column" FROM range(2048) t(i);
 
 statement ok
 CHECKPOINT;
