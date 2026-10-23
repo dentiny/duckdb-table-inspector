@@ -2,6 +2,7 @@
 
 ## Fixed
 
+- Use a nonconstant persisted column in the quoted-identifier regression, since constant-only segments have no ordinary data block to inspect.
 - Force uncompressed, distinct large strings in the overflow-block regression and validate overflow storage plus aggregate inspected bytes independently of segment splitting.
 - Preserve missing-column diagnostic text when rendering identifier names on DuckDB v2.
 
